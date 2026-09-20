@@ -36,6 +36,17 @@ import suwayomi.tachidesk.global.impl.KcefWebView.Companion.toCefCookie
 import suwayomi.tachidesk.global.impl.sync.SyncManager
 import suwayomi.tachidesk.graphql.types.DatabaseType
 import suwayomi.tachidesk.i18n.LocalizationHelper
+import suwayomi.tachidesk.manga.impl.ArchiveBootstrapExecutor
+import suwayomi.tachidesk.manga.impl.ChapterRevisionAcquisitionExecutor
+import suwayomi.tachidesk.manga.impl.ChapterRevisionArchiveExecutor
+import suwayomi.tachidesk.manga.impl.ChapterRevisionArchiveVerificationExecutor
+import suwayomi.tachidesk.manga.impl.ChapterRevisionIntegrityAuditExecutor
+import suwayomi.tachidesk.manga.impl.ChapterRevisionPublicationExecutor
+import suwayomi.tachidesk.manga.impl.ChapterRevisionRetentionExecutor
+import suwayomi.tachidesk.manga.impl.ChapterRevisionSweepExecutor
+import suwayomi.tachidesk.manga.impl.ChapterRevisionVisualAnalysisExecutor
+import suwayomi.tachidesk.manga.impl.KomgaRescanExecutor
+import suwayomi.tachidesk.manga.impl.backup.proto.BackupRestoreExecutor
 import suwayomi.tachidesk.manga.impl.backup.proto.ProtoBackupExport
 import suwayomi.tachidesk.manga.impl.download.DownloadManager
 import suwayomi.tachidesk.manga.impl.extension.Extension
@@ -86,6 +97,14 @@ class ApplicationDirs(
     val webUIServe = "$tempRoot/webUI-serve"
     val automatedBackupRoot
         get() = serverConfig.backupPath.value.ifBlank { "$dataRoot/backups" }
+
+    /** Local staging root for chapter revision candidate downloads; never part of the archive. */
+    val archiveStagingRoot
+        get() = serverConfig.archiveStagingPath.value.ifBlank { "$dataRoot/staging" }
+
+    /** Root of the immutable archived chapter revision artifacts; may be an object-storage mount. */
+    val archiveRoot
+        get() = serverConfig.archivePath.value.ifBlank { "$dataRoot/archive" }
 
     val tempThumbnailCacheRoot = "$tempRoot/thumbnails"
     val tempMangaCacheRoot = "$tempRoot/manga-cache"
@@ -222,6 +241,8 @@ fun applicationSetup() {
         applicationDirs.tempThumbnailCacheRoot,
         applicationDirs.downloadsRoot,
         applicationDirs.localMangaRoot,
+        applicationDirs.archiveStagingRoot,
+        applicationDirs.archiveRoot,
     ).forEach { File(it).mkdirs() }
 
     // initialize Koin modules
@@ -457,6 +478,46 @@ fun applicationSetup() {
     // start DownloadManager and restore + resume downloads
     DownloadManager.restoreAndResumeDownloads()
 
+    // start the chapter revision acquisition executor; it recovers interrupted revisions itself
+    ChapterRevisionAcquisitionExecutor.start()
+
+    // start the archive commit worker; it never confirms remote durability on its own
+    ChapterRevisionArchiveExecutor.start()
+
+    // start the remote durability verifier; it is inert until an rclone remote is configured
+    ChapterRevisionArchiveVerificationExecutor.start()
+
+    // start the active-library publication worker; it only ever publishes confirmed, active revisions.
+    // The built-in Komga listener is registered by its executor before this start, so a delivered
+    // publication can never be missing its rescan intent.
+    ChapterRevisionPublicationExecutor.start()
+
+    // start the coalesced Komga rescan worker; it is inert until Komga is configured
+    KomgaRescanExecutor.start()
+
+    // start the retention worker; it prunes historical payloads only after their replacement is published
+    ChapterRevisionRetentionExecutor.start()
+
+    // start the archive bootstrap worker; it also recovers series claimed by a shutdown. It is inert
+    // until a bootstrap session exists, and a new session wakes it directly.
+    ArchiveBootstrapExecutor.start()
+
+    // start the durable backup restore worker; it recovers a restore a shutdown interrupted and
+    // resumes it from the series it had already applied
+    BackupRestoreExecutor.start()
+
+    // start the periodic revision sweep worker; it also owns the persisted sweep schedule, so a
+    // restart resumes the schedule instead of inventing a sweep that never came due
+    ChapterRevisionSweepExecutor.start()
+
+    // start the visual page comparison worker; it recovers an analysis a shutdown interrupted and
+    // owns the retry schedule of one that could not be produced
+    ChapterRevisionVisualAnalysisExecutor.start()
+
+    // start the archive integrity audit worker; it is inert until an rclone remote is configured, and
+    // it never claims anything while none is: without a remote no revision can be checked at all
+    ChapterRevisionIntegrityAuditExecutor.start()
+
     SyncManager.scheduleSyncTask()
 
     // asynchronously initialize CEF
@@ -470,5 +531,63 @@ fun applicationSetup() {
             ExtensionStoreService.syncPrefsToDb()
         },
         ignoreInitialValue = false,
+    )
+
+    serverConfig.subscribeTo(
+        serverConfig.acceptedRevisionRetention,
+        { _ ->
+            // the global default changes the window of every series that does not override it
+            ChapterRevisionRetentionExecutor.requestSweep()
+        },
+    )
+
+    serverConfig.subscribeTo(
+        combine(
+            serverConfig.chapterRevisionSweepEnabled,
+            serverConfig.chapterRevisionSweepIntervalDays,
+            serverConfig.chapterRevisionSweepNewestChapters,
+        ) { _, _, _ -> Unit },
+        { _ ->
+            // enabling the scheduler or shortening the interval has to take effect without a restart,
+            // and the worker has to be woken so the change is observable before the next due time
+            ChapterRevisionSweepExecutor.configurationChanged()
+        },
+    )
+
+    serverConfig.subscribeTo(
+        serverConfig.archiveRcloneRemote,
+        { _ ->
+            // configuring a remote has to revive the work that was inert while it was blank: the
+            // unscheduled deletions become due and both verifiers are woken without a restart
+            ChapterRevisionRetentionExecutor.configurationChanged()
+            ChapterRevisionArchiveVerificationExecutor.configurationChanged()
+            ChapterRevisionIntegrityAuditExecutor.notifyWorkAvailable()
+        },
+    )
+
+    serverConfig.subscribeTo(
+        combine(
+            serverConfig.chapterIntegrityAuditEnabled,
+            serverConfig.chapterIntegrityAuditIntervalDays,
+            serverConfig.chapterIntegrityAuditRecentRevisions,
+        ) { _, _, _ -> Unit },
+        { _ ->
+            // enabling the scheduler or shortening the interval has to take effect without a restart,
+            // and the worker has to be woken so the change is observable before the next due time
+            ChapterRevisionIntegrityAuditExecutor.configurationChanged()
+        },
+    )
+
+    serverConfig.subscribeTo(
+        combine(
+            serverConfig.komgaBaseUrl,
+            serverConfig.komgaApiKey,
+            serverConfig.komgaLibraryId,
+        ) { _, _, _ -> Unit },
+        { _ ->
+            // a usable Komga configuration is what makes scans possible: the recorded intent becomes
+            // due and the publication events that were undeliverable are retried without a restart
+            KomgaRescanExecutor.configurationChanged()
+        },
     )
 }

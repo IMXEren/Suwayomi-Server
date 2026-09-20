@@ -17,6 +17,7 @@ import io.javalin.apibuilder.ApiBuilder.put
 import io.javalin.apibuilder.ApiBuilder.ws
 import suwayomi.tachidesk.manga.controller.BackupController
 import suwayomi.tachidesk.manga.controller.CategoryController
+import suwayomi.tachidesk.manga.controller.ChapterRevisionController
 import suwayomi.tachidesk.manga.controller.DownloadController
 import suwayomi.tachidesk.manga.controller.ExtensionController
 import suwayomi.tachidesk.manga.controller.MangaController
@@ -111,6 +112,20 @@ object MangaAPI {
 
             get("export", BackupController.protobufExport)
             get("export/file", BackupController.protobufExportFile)
+        }
+
+        path("archive") {
+            path("revisions") {
+                // the previews of one aligned row of a revision comparison; addressed by identity only
+                get("{revisionId}/comparison/{ordinal}/{side}/thumbnail", ChapterRevisionController.comparisonThumbnail)
+                get("{revisionId}/comparison/{ordinal}/{side}/page", ChapterRevisionController.comparisonPage)
+
+                // the archived CBZ of one accepted revision: a GET is either redirected to a short-lived
+                // location on the configured storage or answered with the archived bytes themselves, and
+                // a HEAD reports the same metadata without one
+                get("{revisionId}/download", ChapterRevisionController.download)
+                head("{revisionId}/download", ChapterRevisionController.download)
+            }
         }
 
         path("downloads") {

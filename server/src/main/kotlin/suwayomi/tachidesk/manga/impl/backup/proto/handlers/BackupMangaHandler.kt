@@ -26,6 +26,7 @@ import org.jetbrains.exposed.v1.jdbc.update
 import suwayomi.tachidesk.manga.impl.CategoryManga
 import suwayomi.tachidesk.manga.impl.Chapter
 import suwayomi.tachidesk.manga.impl.Chapter.modifyChaptersMetas
+import suwayomi.tachidesk.manga.impl.ChapterRevision
 import suwayomi.tachidesk.manga.impl.Manga
 import suwayomi.tachidesk.manga.impl.Manga.clearThumbnail
 import suwayomi.tachidesk.manga.impl.Manga.modifyMangasMetas
@@ -38,6 +39,7 @@ import suwayomi.tachidesk.manga.impl.backup.proto.models.BackupTracking
 import suwayomi.tachidesk.manga.impl.track.tracker.TrackerManager
 import suwayomi.tachidesk.manga.impl.track.tracker.model.toTrack
 import suwayomi.tachidesk.manga.impl.track.tracker.model.toTrackRecordDataClass
+import suwayomi.tachidesk.manga.model.dataclass.MangaAcquisitionPolicy
 import suwayomi.tachidesk.manga.model.dataclass.TrackRecordDataClass
 import suwayomi.tachidesk.manga.model.table.ChapterTable
 import suwayomi.tachidesk.manga.model.table.MangaStatus
@@ -85,6 +87,10 @@ object BackupMangaHandler {
                         version = mangaRow[MangaTable.version],
                         initialized = mangaRow[MangaTable.initialized],
                         memo = Json.encodeToString(mangaRow[MangaTable.memo]).encodeToByteArray(),
+                        acquisitionPolicy = mangaRow[MangaTable.acquisitionPolicy],
+                        acceptedRevisionRetention = mangaRow[MangaTable.acceptedRevisionRetention],
+                        // marks 9002 as authoritative so an explicit inherit/null survives a round trip
+                        acceptedRevisionRetentionPresent = true,
                     )
 
                 val mangaId = mangaRow[MangaTable.id].value
@@ -181,6 +187,13 @@ object BackupMangaHandler {
             }
         }
 
+    /**
+     * Applies one series and reports failures as an in-memory message list.
+     *
+     * Used by the legacy in-memory and sync restore paths, which only ever show or log the message
+     * while the restore runs. The message names the series, the source and the raw exception, so a
+     * durable caller must never use this overload - see [restore] below.
+     */
     fun restore(
         backupManga: BackupManga,
         categoryMapping: Map<Int, Int>,
@@ -204,6 +217,39 @@ object BackupMangaHandler {
         }
     }
 
+    /**
+     * Applies one series and reports only whether it was applied.
+     *
+     * A durable restore persists one bounded diagnostic per failed series instead of a message, so it
+     * must not be handed a string that carries the series title, the source name and the raw exception.
+     * This overload answers the only question that caller has, and [sourceMapping] is kept so it stays
+     * interchangeable with the message-producing overload.
+     */
+    @Suppress("UNUSED_PARAMETER")
+    fun restore(
+        backupManga: BackupManga,
+        categoryMapping: Map<Int, Int>,
+        sourceMapping: Map<Long, String>,
+        flags: BackupFlags,
+        syncMode: SyncRestoreMode = SyncRestoreMode.NONE,
+    ): Boolean {
+        val chapters = backupManga.chapters
+        val categories = backupManga.categories
+        val history = backupManga.history
+        val tracking = backupManga.tracking
+
+        val dbCategoryIds = categories.mapNotNull { categoryMapping[it] }
+
+        return try {
+            restoreMangaData(backupManga, chapters, dbCategoryIds, history, tracking, flags, syncMode)
+            true
+        } catch (e: Exception) {
+            // Deliberately swallowed: the caller records its own bounded diagnostic, and the message is
+            // the one thing about this failure that may not be persisted anywhere.
+            false
+        }
+    }
+
     private fun restoreMangaData(
         manga: BackupManga,
         chapters: List<BackupChapter>,
@@ -224,6 +270,19 @@ object BackupMangaHandler {
         // a newer local copy wins the next upload; categories and tracking are part of the manga's version
         val keepLocalManga =
             syncMode == SyncRestoreMode.ADOPT && dbManga != null && manga.version < dbManga[MangaTable.version]
+
+        // null when the backup predates the field or carries an unknown value, in which case the stored policy is kept
+        val restoredAcquisitionPolicy = parseAcquisitionPolicy(manga.acquisitionPolicy)
+        // The retention field is only authoritative when the backup carries the presence marker: without
+        // it the value is the proto3 default, so an old backup - or a peer that dropped the field - is
+        // indistinguishable from an intentional override and must not touch the stored one. With the
+        // marker, a null value clears the override back to inheritance and a non-null value must be a
+        // valid override; an out-of-range value from a newer/corrupted client is ignored.
+        val validAcceptedRevisionRetention =
+            manga.acceptedRevisionRetention == null ||
+                ChapterRevision.isValidAcceptedRevisionRetentionOverride(manga.acceptedRevisionRetention)
+        val applyAcceptedRevisionRetention = manga.acceptedRevisionRetentionPresent && validAcceptedRevisionRetention
+        val restoredAcceptedRevisionRetention = manga.acceptedRevisionRetention
 
         val mangaId =
             transaction {
@@ -259,6 +318,10 @@ object BackupMangaHandler {
                                 it[version] = manga.version
                                 it[isSyncing] = syncMode.isSync
                                 it[memo] = Json.decodeFromString<JsonObject>(manga.memo.decodeToString())
+                                restoredAcquisitionPolicy?.let { policy -> it[acquisitionPolicy] = policy.name }
+                                if (applyAcceptedRevisionRetention) {
+                                    it[acceptedRevisionRetention] = restoredAcceptedRevisionRetention
+                                }
                             }.value
                     } else if (keepLocalManga) {
                         dbManga[MangaTable.id].value
@@ -296,6 +359,12 @@ object BackupMangaHandler {
                             }
                             it[isSyncing] = syncMode.isSync
                             it[memo] = Json.decodeFromString<JsonObject>(manga.memo.decodeToString())
+                            // an old backup without the field must not wipe the stored policy
+                            restoredAcquisitionPolicy?.let { policy -> it[acquisitionPolicy] = policy.name }
+                            // an old backup without the presence marker must not wipe the stored override
+                            if (applyAcceptedRevisionRetention) {
+                                it[acceptedRevisionRetention] = restoredAcceptedRevisionRetention
+                            }
                         }
 
                         dbMangaId
@@ -515,4 +584,12 @@ object BackupMangaHandler {
     }
 
     private fun TrackRecordDataClass.forComparison() = this.copy(id = 0, mangaId = 0)
+
+    /**
+     * Older Mihon/Yokai backups do not carry the acquisition policy, and a backup produced by a
+     * newer/unknown client may carry a value this server does not know. Both cases are treated the
+     * same way: the stored policy is left untouched instead of being overwritten by the default.
+     */
+    private fun parseAcquisitionPolicy(raw: String?): MangaAcquisitionPolicy? =
+        raw?.let { value -> MangaAcquisitionPolicy.entries.firstOrNull { it.name == value } }
 }

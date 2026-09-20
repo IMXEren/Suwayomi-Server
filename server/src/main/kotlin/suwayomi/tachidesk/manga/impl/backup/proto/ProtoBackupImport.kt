@@ -34,9 +34,15 @@ import suwayomi.tachidesk.manga.impl.backup.proto.handlers.BackupMangaHandler
 import suwayomi.tachidesk.manga.impl.backup.proto.handlers.BackupSettingsHandler
 import suwayomi.tachidesk.manga.impl.backup.proto.handlers.BackupSourceHandler
 import suwayomi.tachidesk.manga.impl.backup.proto.models.Backup
+import suwayomi.tachidesk.manga.model.dataclass.BackupRestoreJobDataClass
+import suwayomi.tachidesk.manga.model.dataclass.BackupRestoreJobState
+import suwayomi.tachidesk.manga.model.dataclass.BackupRestorePhase
 import suwayomi.tachidesk.manga.model.table.CategoryTable
 import suwayomi.tachidesk.manga.model.table.ChapterTable
 import suwayomi.tachidesk.manga.model.table.MangaTable
+import suwayomi.tachidesk.server.ApplicationDirs
+import uy.kohesive.injekt.injectLazy
+import java.io.File
 import java.io.InputStream
 import java.util.Date
 import java.util.Timer
@@ -45,6 +51,8 @@ import java.util.concurrent.ConcurrentHashMap
 
 object ProtoBackupImport : ProtoBackupBase() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
+    private val applicationDirs: ApplicationDirs by injectLazy()
 
     private val logger = KotlinLogging.logger {}
 
@@ -83,7 +91,21 @@ object ProtoBackupImport : ProtoBackupBase() {
 
     val notifyFlow = MutableSharedFlow<Unit>(extraBufferCapacity = 1, onBufferOverflow = DROP_OLDEST)
 
-    fun getRestoreState(id: String): BackupRestoreState? = backupRestoreIdToState[id]
+    /**
+     * The restore status a client polls.
+     *
+     * The in-memory map is only a fast path for a sync restore, which never has a job row. A durable
+     * restore is read back from the database instead, so its status survives a restart and is not lost
+     * when the in-memory cache is cleaned up.
+     */
+    fun getRestoreState(id: String): BackupRestoreState? = backupRestoreIdToState[id] ?: BackupRestoreJob.get(id)?.toLegacyRestoreState()
+
+    /** Records that a durable restore moved, so a client that polls the flow sees the progress. */
+    internal fun notifyRestoreStateChanged() {
+        scope.launch {
+            notifyFlow.emit(Unit)
+        }
+    }
 
     private fun updateRestoreState(
         id: String,
@@ -116,7 +138,16 @@ object ProtoBackupImport : ProtoBackupBase() {
         sourceStream: InputStream,
         flags: BackupFlags,
         syncMode: SyncRestoreMode = SyncRestoreMode.NONE,
+        options: BackupRestoreJob.Request? = null,
     ): String {
+        // A plain restore is durable: the payload is staged once and a job row owns the progress, so a
+        // restart resumes a long import instead of losing it. A sync restore keeps the in-memory path,
+        // because the sync protocol needs the validation result in the same call and its payload is
+        // derived from the server, not uploaded.
+        if (syncMode == SyncRestoreMode.NONE) {
+            return restoreDurably(sourceStream, options?.copy(flags = flags) ?: BackupRestoreJob.Request(flags))
+        }
+
         val restoreId = System.currentTimeMillis().toString()
 
         logger.info { "restore($restoreId): queued" }
@@ -128,6 +159,21 @@ object ProtoBackupImport : ProtoBackupBase() {
         }
 
         return restoreId
+    }
+
+    /** Stages the uploaded payload and hands the restore to the durable worker. */
+    private fun restoreDurably(
+        sourceStream: InputStream,
+        request: BackupRestoreJob.Request,
+    ): String {
+        val job = BackupRestoreJob.create(sourceStream, request, File(applicationDirs.archiveStagingRoot))
+
+        logger.info { "restore(${job.restoreId}): staged ${job.stagedSize} bytes and queued" }
+
+        BackupRestoreExecutor.notifyWorkAvailable()
+        notifyRestoreStateChanged()
+
+        return job.restoreId
     }
 
     suspend fun restoreLegacy(
@@ -266,5 +312,68 @@ object ProtoBackupImport : ProtoBackupBase() {
         updateRestoreState(id, BackupRestoreState.Success)
 
         return validationResult
+    }
+}
+
+/**
+ * Projects a durable job onto the restore status the existing clients already speak.
+ *
+ * The legacy status distinguishes "queued" from "working on this phase"; a durable job distinguishes
+ * the same things through its state and phase, so the projection is total and no client has to learn
+ * a second status vocabulary. The series counter of the series phase is the count the job has actually
+ * applied, which is what a resume continues from.
+ */
+private fun BackupRestoreJobDataClass.toLegacyRestoreState(): ProtoBackupImport.BackupRestoreState {
+    val total = mangaCount
+
+    return when (state) {
+        BackupRestoreJobState.QUEUED -> {
+            ProtoBackupImport.BackupRestoreState.Idle
+        }
+
+        BackupRestoreJobState.SUCCESS -> {
+            ProtoBackupImport.BackupRestoreState.Success
+        }
+
+        BackupRestoreJobState.FAILURE -> {
+            ProtoBackupImport.BackupRestoreState.Failure
+        }
+
+        // a cancelled restore is reported as a failure: it did not reach the library it was applying
+        BackupRestoreJobState.CANCELLED -> {
+            ProtoBackupImport.BackupRestoreState.Failure
+        }
+
+        BackupRestoreJobState.RUNNING -> {
+            when (phase) {
+                BackupRestorePhase.PENDING -> {
+                    ProtoBackupImport.BackupRestoreState.RestoringSettings(0, total)
+                }
+
+                BackupRestorePhase.SETTINGS -> {
+                    ProtoBackupImport.BackupRestoreState.RestoringSettings(mangaIndex, total)
+                }
+
+                BackupRestorePhase.CATEGORIES -> {
+                    ProtoBackupImport.BackupRestoreState.RestoringCategories(mangaIndex, total)
+                }
+
+                BackupRestorePhase.META -> {
+                    ProtoBackupImport.BackupRestoreState.RestoringMeta(mangaIndex, total)
+                }
+
+                BackupRestorePhase.MANGA,
+                BackupRestorePhase.COMPLETED,
+                -> {
+                    ProtoBackupImport.BackupRestoreState.RestoringManga(
+                        current = mangaIndex,
+                        totalManga = total,
+                        // the legacy status carries the series title for a progress label; the durable
+                        // job deliberately does not persist one, so the label falls back to the counter
+                        title = "",
+                    )
+                }
+            }
+        }
     }
 }

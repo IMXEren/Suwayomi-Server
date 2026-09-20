@@ -33,13 +33,16 @@ jobs:
       # The fork ships the matching WebUI branch instead of the upstream
       # preview WebUI, so main releases bundle WebUI main and dev releases
       # bundle WebUI dev.
+      # A full clone is required: the bundled WebUI build derives its revision from the
+      # repository commit history, so a shallow clone makes every release advertise the
+      # same revision.
       - name: Checkout Suwayomi-WebUI (${{ github.ref_name }})
         uses: actions/checkout@v7
         with:
           repository: IMXEren/Suwayomi-WebUI
           ref: ${{ github.ref_name }}
           path: webui
-          fetch-depth: 1
+          fetch-depth: 0
           persist-credentials: false
 
       - name: Validate Gradle Wrapper

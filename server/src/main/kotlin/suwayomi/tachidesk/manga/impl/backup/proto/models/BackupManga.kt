@@ -52,4 +52,10 @@ data class BackupManga(
     @ProtoNumber(112) var memo: ByteArray = JsonObjectEmptyBytes,
     // suwayomi
     @ProtoNumber(9000) var meta: Map<String, String> = emptyMap(),
+    // suwayomi: per-series acquisition policy; null when the backup predates the field
+    @ProtoNumber(9001) var acquisitionPolicy: String? = null,
+    // suwayomi: per-series accepted-revision retention override; null when the backup predates the field
+    @ProtoNumber(9002) var acceptedRevisionRetention: Int? = null,
+    // suwayomi: presence marker for 9002, so an explicit inherit/null is distinguishable from an old backup
+    @ProtoNumber(9003) var acceptedRevisionRetentionPresent: Boolean = false,
 )

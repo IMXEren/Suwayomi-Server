@@ -269,6 +269,61 @@ server.koreaderSyncStrategyBackward = DISABLED # PROMPT, KEEP_LOCAL, KEEP_REMOTE
 - `server.koreaderSyncStrategyForward` the strategy to apply when remote progress is newer than local.
 - `server.koreaderSyncStrategyBackward` the strategy to apply when remote progress is older than local.
 
+### Archival
+```
+server.archiveStagingPath = ""
+server.archivePath = ""
+server.archiveRcloneRemote = ""
+server.archiveRcloneExecutable = "rclone"
+server.archiveVerificationRetrySeconds = 300
+server.archiveVerificationTimeoutSeconds = 30
+server.acceptedRevisionRetention = 3
+server.komgaBaseUrl = ""
+server.komgaApiKey = ""
+server.komgaLibraryId = ""
+server.komgaRescanDebounceSeconds = 15
+server.komgaRescanRetrySeconds = 300
+server.komgaRequestTimeoutSeconds = 30
+server.archiveBootstrapInterItemDelaySeconds = 2
+server.archiveBootstrapRetrySeconds = 300
+server.archiveBootstrapMaxAttempts = 3
+server.chapterRevisionSweepEnabled = true
+server.chapterRevisionSweepIntervalDays = 30
+server.chapterRevisionSweepNewestChapters = 10
+server.chapterRevisionSweepItemDelaySeconds = 2
+server.chapterRevisionSweepRetrySeconds = 300
+server.chapterRevisionSweepMaxAttempts = 3
+server.chapterRevisionVisualHashThreshold = 2
+server.chapterRevisionAutoDismissVisuallyEquivalent = false
+server.chapterRevisionVisualAnalysisRetrySeconds = 300
+server.chapterRevisionVisualAnalysisMaxAttempts = 3
+server.chapterRevisionThumbnailMaxDimension = 480
+server.chapterIntegrityAuditEnabled = false
+server.chapterIntegrityAuditIntervalDays = 90
+server.chapterIntegrityAuditRecentRevisions = 10
+server.chapterIntegrityAuditItemDelaySeconds = 2
+server.chapterIntegrityAuditRetrySeconds = 300
+server.chapterIntegrityAuditMaxAttempts = 3
+server.archiveDirectDeliveryEnabled = false
+server.archiveDirectDeliveryExpirySeconds = 300
+server.archiveDirectDeliveryFallbackToLocal = true
+server.archiveDirectDeliveryRequireExpiryEvidence = true
+```
+
+- `server.archiveStagingPath` is a local staging root. A blank value uses the server data directory. Do not place staging inside the remote mount.
+- `server.archivePath` is the mounted archive root. A blank value uses the server data directory.
+- `server.archiveRcloneRemote` is the direct rclone remote prefix used to prove durability, audit objects, and optionally generate download links. A blank value leaves new revisions at `REMOTE_PENDING`.
+- `server.archiveRcloneExecutable` selects the rclone executable. `server.archiveVerificationRetrySeconds` and `server.archiveVerificationTimeoutSeconds` control remote verification retries and command timeouts.
+- `server.acceptedRevisionRetention` keeps this many superseded accepted revisions in addition to the active one. Use `-1` for unlimited or `0` for active-only retention; a series can override it.
+- `server.komgaBaseUrl`, `server.komgaLibraryId`, and the write-only `server.komgaApiKey` enable post-publication library scans. The debounce, retry, and request-timeout settings control that restart-safe scan worker.
+- The `server.archiveBootstrap*` settings rate-limit and retry the resumable initial library bootstrap.
+- The `server.chapterRevisionSweep*` settings control scheduled newest-chapter revision sweeps. Full-history sweeps remain manual.
+- `server.chapterRevisionVisualHashThreshold` controls perceptual comparison tolerance. Automatic perceptual dismissal is off by default; the remaining visual-analysis settings control retry limits and thumbnail size.
+- The `server.chapterIntegrityAudit*` settings control optional scheduled remote integrity audits. Audit findings never delete content or downgrade `REMOTE_CONFIRMED`; full-history audits remain manual.
+- `server.archiveDirectDeliveryEnabled` permits per-request rclone links. Bounded expiry evidence is required by default; `server.archiveDirectDeliveryFallbackToLocal` retains authenticated local streaming when direct delivery is unavailable.
+
+Paths, remote details, credentials, and deployment-specific integration settings are excluded from backups. Keep rclone and Komga credentials outside version control.
+
 ### Database
 ```
 server.databaseType = H2 # H2, POSTGRESQL

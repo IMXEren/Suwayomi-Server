@@ -8,12 +8,16 @@
 package suwayomi.tachidesk.graphql.server
 
 import com.expediagroup.graphql.dataloader.KotlinDataLoaderRegistryFactory
+import suwayomi.tachidesk.graphql.dataLoaders.CanonicalBindingForMangaDataLoader
+import suwayomi.tachidesk.graphql.dataLoaders.CanonicalBindingsForWorkDataLoader
+import suwayomi.tachidesk.graphql.dataLoaders.CanonicalWorkDataLoader
 import suwayomi.tachidesk.graphql.dataLoaders.CategoriesForMangaDataLoader
 import suwayomi.tachidesk.graphql.dataLoaders.CategoryDataLoader
 import suwayomi.tachidesk.graphql.dataLoaders.CategoryMetaDataLoader
 import suwayomi.tachidesk.graphql.dataLoaders.ChapterDataLoader
 import suwayomi.tachidesk.graphql.dataLoaders.ChapterFlagCountForMangaDataLoader
 import suwayomi.tachidesk.graphql.dataLoaders.ChapterMetaDataLoader
+import suwayomi.tachidesk.graphql.dataLoaders.ChapterRevisionDataLoader
 import suwayomi.tachidesk.graphql.dataLoaders.ChaptersForMangaDataLoader
 import suwayomi.tachidesk.graphql.dataLoaders.DisplayScoreForTrackRecordDataLoader
 import suwayomi.tachidesk.graphql.dataLoaders.DisplayScoreForTrackSearchDataLoader
@@ -50,6 +54,10 @@ class TachideskDataLoaderRegistryFactory {
             KotlinDataLoaderRegistryFactory(
                 MangaDataLoader(),
                 ChapterDataLoader(),
+                ChapterRevisionDataLoader(),
+                CanonicalWorkDataLoader(),
+                CanonicalBindingsForWorkDataLoader(),
+                CanonicalBindingForMangaDataLoader(),
                 ChaptersForMangaDataLoader(),
                 ChapterFlagCountForMangaDataLoader(),
                 HasDuplicateChaptersForMangaDataLoader(),

@@ -21,3 +21,6 @@ scripts/zulu*
 scripts/electron-*
 scripts/rcedit-*
 scripts/resources/*.so
+
+# Node tooling used only by the semantic-release pipeline
+/node_modules/

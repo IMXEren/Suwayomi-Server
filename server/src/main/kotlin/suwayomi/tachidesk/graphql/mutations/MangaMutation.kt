@@ -22,9 +22,12 @@ import suwayomi.tachidesk.graphql.types.ChapterType
 import suwayomi.tachidesk.graphql.types.MangaMetaType
 import suwayomi.tachidesk.graphql.types.MangaType
 import suwayomi.tachidesk.graphql.types.MetaInput
+import suwayomi.tachidesk.manga.impl.ChapterRevision
+import suwayomi.tachidesk.manga.impl.ChapterRevisionRetentionExecutor
 import suwayomi.tachidesk.manga.impl.Library
 import suwayomi.tachidesk.manga.impl.Manga
 import suwayomi.tachidesk.manga.impl.update.IUpdater
+import suwayomi.tachidesk.manga.model.dataclass.MangaAcquisitionPolicy
 import suwayomi.tachidesk.manga.model.table.ChapterTable
 import suwayomi.tachidesk.manga.model.table.MangaMetaTable
 import suwayomi.tachidesk.manga.model.table.MangaTable
@@ -44,6 +47,15 @@ class MangaMutation {
 
     data class UpdateMangaPatch(
         val inLibrary: Boolean? = null,
+        val acquisitionPolicy: MangaAcquisitionPolicy? = null,
+        /**
+         * Per-series override of how many superseded accepted revisions to keep in addition to the
+         * active one: -1 keeps every accepted revision, >= 0 keeps that many. Null leaves it
+         * unchanged; set [inheritAcceptedRevisionRetention] to go back to the global default.
+         */
+        val acceptedRevisionRetention: Int? = null,
+        /** true clears the per-series override so the series inherits the global default again */
+        val inheritAcceptedRevisionRetention: Boolean = false,
     )
 
     data class UpdateMangaPayload(
@@ -72,12 +84,33 @@ class MangaMutation {
         ids: List<Int>,
         patch: UpdateMangaPatch,
     ) {
+        require(ChapterRevision.isValidAcceptedRevisionRetentionOverride(patch.acceptedRevisionRetention)) {
+            "acceptedRevisionRetention must be -1 (unlimited), 0 or greater, but was ${patch.acceptedRevisionRetention}"
+        }
+        require(!(patch.inheritAcceptedRevisionRetention && patch.acceptedRevisionRetention != null)) {
+            "acceptedRevisionRetention and inheritAcceptedRevisionRetention are mutually exclusive"
+        }
+
         transaction {
-            if (patch.inLibrary != null) {
+            if (patch.inLibrary != null ||
+                patch.acquisitionPolicy != null ||
+                patch.acceptedRevisionRetention != null ||
+                patch.inheritAcceptedRevisionRetention
+            ) {
+                // apply every patched field in a single statement so the update is atomic
                 MangaTable.update({ MangaTable.id inList ids }) { update ->
-                    patch.inLibrary.also {
+                    patch.inLibrary?.also {
                         update[inLibrary] = it
                         if (it) update[inLibraryAt] = Instant.now().epochSecond
+                    }
+                    patch.acquisitionPolicy?.also {
+                        update[acquisitionPolicy] = it.name
+                    }
+                    patch.acceptedRevisionRetention?.also {
+                        update[acceptedRevisionRetention] = it
+                    }
+                    if (patch.inheritAcceptedRevisionRetention) {
+                        update[acceptedRevisionRetention] = null
                     }
                 }
             }
@@ -100,6 +133,13 @@ class MangaMutation {
                     Library.handleMangaThumbnail(it, patch.inLibrary)
                 }
             }
+        }
+
+        if (patch.acceptedRevisionRetention != null || patch.inheritAcceptedRevisionRetention) {
+            // A per-series override only moves revisions of the changed series in or out of the
+            // retention window, so only their published identities are reconciled instead of sweeping
+            // the whole library.
+            ChapterRevisionRetentionExecutor.requestMangas(ids)
         }
     }
 

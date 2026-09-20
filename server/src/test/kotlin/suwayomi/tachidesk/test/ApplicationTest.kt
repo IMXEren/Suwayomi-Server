@@ -79,6 +79,8 @@ open class ApplicationTest {
                 applicationDirs.tempThumbnailCacheRoot,
                 applicationDirs.downloadsRoot,
                 applicationDirs.localMangaRoot,
+                applicationDirs.archiveStagingRoot,
+                applicationDirs.archiveRoot,
             ).forEach {
                 File(it).mkdirs()
             }

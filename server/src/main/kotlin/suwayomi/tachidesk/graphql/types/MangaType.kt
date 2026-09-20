@@ -18,10 +18,12 @@ import suwayomi.tachidesk.graphql.server.primitives.Node
 import suwayomi.tachidesk.graphql.server.primitives.NodeList
 import suwayomi.tachidesk.graphql.server.primitives.PageInfo
 import suwayomi.tachidesk.manga.impl.MangaList
+import suwayomi.tachidesk.manga.model.dataclass.MangaAcquisitionPolicy
 import suwayomi.tachidesk.manga.model.dataclass.MangaDataClass
 import suwayomi.tachidesk.manga.model.dataclass.toGenreList
 import suwayomi.tachidesk.manga.model.table.MangaStatus
 import suwayomi.tachidesk.manga.model.table.MangaTable
+import suwayomi.tachidesk.server.serverConfig
 import java.time.Instant
 import java.util.concurrent.CompletableFuture
 
@@ -41,6 +43,15 @@ class MangaType(
     val inLibrary: Boolean,
     val inLibraryAt: Long,
     val updateStrategy: UpdateStrategy,
+    val acquisitionPolicy: MangaAcquisitionPolicy,
+    /**
+     * Per-series retention override of superseded accepted revisions: null inherits the global
+     * default, -1 keeps every accepted revision and >= 0 keeps that many in addition to the active
+     * one.
+     */
+    val acceptedRevisionRetention: Int?,
+    /** The retention actually applied to this series: the override when set, the global default otherwise. */
+    val effectiveAcceptedRevisionRetention: Int,
     val realUrl: String?,
     var lastFetchedAt: Long?, // todo
     var chaptersLastFetchedAt: Long?, // todo
@@ -72,6 +83,7 @@ class MangaType(
                 )?.clear(mangaId)
             dataFetchingEnvironment.getDataLoader<Int, List<MangaMetaType>>("MangaMetaDataLoader")?.clear(mangaId)
             dataFetchingEnvironment.getDataLoader<Int, CategoryNodeList>("CategoriesForMangaDataLoader")?.clear(mangaId)
+            dataFetchingEnvironment.getDataLoader<Int, CanonicalSourceBindingType>("CanonicalBindingForMangaDataLoader")?.clear(mangaId)
         }
     }
 
@@ -91,6 +103,9 @@ class MangaType(
         row[MangaTable.inLibrary],
         row[MangaTable.inLibraryAt],
         UpdateStrategy.valueOf(row[MangaTable.updateStrategy]),
+        MangaAcquisitionPolicy.valueOf(row[MangaTable.acquisitionPolicy]),
+        row[MangaTable.acceptedRevisionRetention],
+        row[MangaTable.acceptedRevisionRetention] ?: serverConfig.acceptedRevisionRetention.value,
         row[MangaTable.realUrl],
         row[MangaTable.lastFetchedAt],
         row[MangaTable.chaptersLastFetchedAt],
@@ -112,6 +127,9 @@ class MangaType(
         dataClass.inLibrary,
         dataClass.inLibraryAt,
         dataClass.updateStrategy,
+        dataClass.acquisitionPolicy,
+        dataClass.acceptedRevisionRetention,
+        dataClass.acceptedRevisionRetention ?: serverConfig.acceptedRevisionRetention.value,
         dataClass.realUrl,
         dataClass.lastFetchedAt,
         dataClass.chaptersLastFetchedAt,
@@ -169,6 +187,25 @@ class MangaType(
 
     fun meta(dataFetchingEnvironment: DataFetchingEnvironment): CompletableFuture<List<MangaMetaType>> =
         dataFetchingEnvironment.getValueFromDataLoader<Int, List<MangaMetaType>>("MangaMetaDataLoader", id)
+
+    /**
+     * The canonical work binding of this manga, or null while it is unbound.
+     *
+     * An unbound manga is not a degraded one: it is discovered, acquired and archived exactly as it was
+     * before canonical identity existed. A binding with the `FALLBACK` or `DISABLED` role is what stops
+     * ordinary discovery, and it never retracts anything already recorded.
+     */
+    fun canonicalBinding(dataFetchingEnvironment: DataFetchingEnvironment): CompletableFuture<CanonicalSourceBindingType?> =
+        dataFetchingEnvironment.getValueFromDataLoader("CanonicalBindingForMangaDataLoader", id)
+
+    /**
+     * True while ordinary discovery records candidates for this manga.
+     *
+     * Derived from [canonicalBinding] so a client can never see an eligibility that disagrees with the
+     * binding it was given: unbound is eligible, `ACTIVE` is eligible, `FALLBACK` and `DISABLED` are not.
+     */
+    fun canonicalAcquisitionEligible(dataFetchingEnvironment: DataFetchingEnvironment): CompletableFuture<Boolean> =
+        canonicalBinding(dataFetchingEnvironment).thenApply { it?.acquisitionEligible ?: true }
 
     fun categories(dataFetchingEnvironment: DataFetchingEnvironment): CompletableFuture<CategoryNodeList> =
         dataFetchingEnvironment.getValueFromDataLoader<Int, CategoryNodeList>("CategoriesForMangaDataLoader", id)

@@ -1147,6 +1147,451 @@ class ServerConfig(
         description = "List of extension store index URLs",
     )
 
+    val archiveStagingPath: MutableStateFlow<String> by PathSetting(
+        protoNumber = 98,
+        group = SettingGroup.ARCHIVAL,
+        privacySafe = false,
+        defaultValue = "",
+        mustExist = true,
+        excludeFromBackup = true,
+        requiresRestart = true,
+        description = "Local staging root for chapter revision candidates; blank uses <data root>/staging",
+    )
+
+    val archivePath: MutableStateFlow<String> by PathSetting(
+        protoNumber = 99,
+        group = SettingGroup.ARCHIVAL,
+        privacySafe = false,
+        defaultValue = "",
+        mustExist = true,
+        excludeFromBackup = true,
+        requiresRestart = true,
+        description = "Archive root for immutable chapter revision artifacts; blank uses <data root>/archive",
+    )
+
+    val archiveRcloneRemote: MutableStateFlow<String> by StringSetting(
+        protoNumber = 100,
+        group = SettingGroup.ARCHIVAL,
+        privacySafe = false,
+        defaultValue = "",
+        maxLength = 1024,
+        excludeFromBackup = true,
+        requiresRestart = true,
+        description =
+            "rclone remote spec that is queried directly to confirm archival durability, " +
+                "e.g. 'remote:bucket/library'; blank leaves revisions unverified at REMOTE_PENDING",
+    )
+
+    val archiveRcloneExecutable: MutableStateFlow<String> by StringSetting(
+        protoNumber = 101,
+        group = SettingGroup.ARCHIVAL,
+        privacySafe = true,
+        defaultValue = "rclone",
+        maxLength = 1024,
+        excludeFromBackup = true,
+        requiresRestart = true,
+        description = "rclone executable used for remote archival durability verification",
+    )
+
+    val archiveVerificationRetrySeconds: MutableStateFlow<Int> by IntSetting(
+        protoNumber = 102,
+        group = SettingGroup.ARCHIVAL,
+        privacySafe = true,
+        defaultValue = 300,
+        min = 30,
+        excludeFromBackup = true,
+        description = "Seconds between remote durability re-checks of a revision that is not visible yet",
+    )
+
+    val archiveVerificationTimeoutSeconds: MutableStateFlow<Int> by IntSetting(
+        protoNumber = 103,
+        group = SettingGroup.ARCHIVAL,
+        privacySafe = true,
+        defaultValue = 30,
+        min = 5,
+        max = 600,
+        excludeFromBackup = true,
+        description = "Timeout in seconds for a single remote durability verification command",
+    )
+
+    val acceptedRevisionRetention: MutableStateFlow<Int> by IntSetting(
+        protoNumber = 104,
+        group = SettingGroup.ARCHIVAL,
+        privacySafe = true,
+        defaultValue = 3,
+        min = -1,
+        requiresRestart = false,
+        description =
+            "Superseded accepted revisions kept per chapter in addition to the active one; " +
+                "-1 keeps every accepted revision, 0 keeps only the active one",
+    )
+
+    val komgaBaseUrl: MutableStateFlow<String> by StringSetting(
+        protoNumber = 105,
+        group = SettingGroup.ARCHIVAL,
+        privacySafe = false,
+        defaultValue = "",
+        maxLength = 1024,
+        excludeFromBackup = true,
+        requiresRestart = false,
+        description =
+            "Base URL of the Komga instance the published archive is rescanned on, e.g. " +
+                "'http://komga:25600'; a reverse-proxy base path is kept; blank disables Komga integration",
+    )
+
+    val komgaApiKey: MutableStateFlow<String> by StringSetting(
+        protoNumber = 106,
+        group = SettingGroup.ARCHIVAL,
+        privacySafe = false,
+        secret = true,
+        defaultValue = "",
+        maxLength = 1024,
+        excludeFromBackup = true,
+        requiresRestart = false,
+        description =
+            "Komga API key, sent as the X-API-Key header and never persisted or reported back; " +
+                "blank sends no key, which is only correct for a Komga without authentication",
+    )
+
+    val komgaLibraryId: MutableStateFlow<String> by StringSetting(
+        protoNumber = 107,
+        group = SettingGroup.ARCHIVAL,
+        privacySafe = false,
+        defaultValue = "",
+        maxLength = 1024,
+        excludeFromBackup = true,
+        requiresRestart = false,
+        description =
+            "Id of the single Komga library the published archive belongs to; blank disables Komga integration",
+    )
+
+    val komgaRescanDebounceSeconds: MutableStateFlow<Int> by IntSetting(
+        protoNumber = 108,
+        group = SettingGroup.ARCHIVAL,
+        privacySafe = true,
+        defaultValue = 15,
+        min = 0,
+        max = 3600,
+        excludeFromBackup = true,
+        description =
+            "Quiet period in seconds a Komga rescan waits for after the last publication, " +
+                "so a burst of published chapters results in a single scan",
+    )
+
+    val komgaRescanRetrySeconds: MutableStateFlow<Int> by IntSetting(
+        protoNumber = 109,
+        group = SettingGroup.ARCHIVAL,
+        privacySafe = true,
+        defaultValue = 300,
+        min = 30,
+        max = 86400,
+        excludeFromBackup = true,
+        description = "Seconds between retries of a Komga scan that failed transiently",
+    )
+
+    val komgaRequestTimeoutSeconds: MutableStateFlow<Int> by IntSetting(
+        protoNumber = 110,
+        group = SettingGroup.ARCHIVAL,
+        privacySafe = true,
+        defaultValue = 30,
+        min = 5,
+        max = 600,
+        excludeFromBackup = true,
+        description = "Timeout in seconds for a single Komga scan request",
+    )
+
+    val archiveBootstrapInterItemDelaySeconds: MutableStateFlow<Int> by IntSetting(
+        protoNumber = 111,
+        group = SettingGroup.ARCHIVAL,
+        privacySafe = true,
+        defaultValue = 2,
+        min = 0,
+        max = 3600,
+        excludeFromBackup = true,
+        description =
+            "Seconds a running archive bootstrap waits between two series, so a 3,435 series " +
+                "backfill is spread out instead of refreshing every source at once",
+    )
+
+    val archiveBootstrapRetrySeconds: MutableStateFlow<Int> by IntSetting(
+        protoNumber = 112,
+        group = SettingGroup.ARCHIVAL,
+        privacySafe = true,
+        defaultValue = 300,
+        min = 30,
+        max = 86400,
+        excludeFromBackup = true,
+        description = "Seconds before a series of an archive bootstrap whose refresh failed is retried",
+    )
+
+    val archiveBootstrapMaxAttempts: MutableStateFlow<Int> by IntSetting(
+        protoNumber = 113,
+        group = SettingGroup.ARCHIVAL,
+        privacySafe = true,
+        defaultValue = 3,
+        min = 1,
+        max = 100,
+        excludeFromBackup = true,
+        description =
+            "Attempts a series of an archive bootstrap gets before it is reported as failed; " +
+                "a source that is not installed is reported separately and never consumes attempts",
+    )
+
+    val chapterRevisionSweepEnabled: MutableStateFlow<Boolean> by BooleanSetting(
+        protoNumber = 114,
+        group = SettingGroup.ARCHIVAL,
+        privacySafe = true,
+        defaultValue = true,
+        excludeFromBackup = false,
+        description =
+            "Whether the newest chapters of every tracked series are re-checked on a schedule; " +
+                "a source exposes no revision id, so re-fetching the content is the only way to " +
+                "notice a re-release",
+    )
+
+    val chapterRevisionSweepIntervalDays: MutableStateFlow<Int> by IntSetting(
+        protoNumber = 115,
+        group = SettingGroup.ARCHIVAL,
+        privacySafe = true,
+        defaultValue = 30,
+        min = 1,
+        max = 3650,
+        excludeFromBackup = false,
+        description =
+            "Days between two automatic revision sweeps; shortening it pulls the pending sweep in, " +
+                "lengthening it never postpones one that is already scheduled",
+    )
+
+    val chapterRevisionSweepNewestChapters: MutableStateFlow<Int> by IntSetting(
+        protoNumber = 116,
+        group = SettingGroup.ARCHIVAL,
+        privacySafe = true,
+        defaultValue = 10,
+        min = 1,
+        max = 1000,
+        excludeFromBackup = false,
+        description = "Newest chapters per series an automatic or recent-only sweep re-checks",
+    )
+
+    val chapterRevisionSweepItemDelaySeconds: MutableStateFlow<Int> by IntSetting(
+        protoNumber = 117,
+        group = SettingGroup.ARCHIVAL,
+        privacySafe = true,
+        defaultValue = 2,
+        min = 0,
+        max = 3600,
+        excludeFromBackup = true,
+        description =
+            "Seconds a running revision sweep waits between two chapters, so re-checking the newest " +
+                "chapters of a large library does not become one burst of source requests",
+    )
+
+    val chapterRevisionSweepRetrySeconds: MutableStateFlow<Int> by IntSetting(
+        protoNumber = 118,
+        group = SettingGroup.ARCHIVAL,
+        privacySafe = true,
+        defaultValue = 300,
+        min = 30,
+        max = 86400,
+        excludeFromBackup = true,
+        description = "Seconds before a chapter of a revision sweep whose attempt failed is retried",
+    )
+
+    val chapterRevisionSweepMaxAttempts: MutableStateFlow<Int> by IntSetting(
+        protoNumber = 119,
+        group = SettingGroup.ARCHIVAL,
+        privacySafe = true,
+        defaultValue = 3,
+        min = 1,
+        max = 100,
+        excludeFromBackup = true,
+        description = "Attempts a chapter of a revision sweep gets before it is reported as failed",
+    )
+
+    val chapterRevisionVisualHashThreshold: MutableStateFlow<Int> by IntSetting(
+        protoNumber = 120,
+        group = SettingGroup.ARCHIVAL,
+        privacySafe = true,
+        defaultValue = 2,
+        min = 0,
+        max = 64,
+        excludeFromBackup = false,
+        description =
+            "Maximum Hamming distance between two page fingerprints that still counts as visually " +
+                "equivalent; conservative by default, because a larger value makes collisions between " +
+                "genuinely different pages more likely",
+    )
+
+    val chapterRevisionAutoDismissVisuallyEquivalent: MutableStateFlow<Boolean> by BooleanSetting(
+        protoNumber = 121,
+        group = SettingGroup.ARCHIVAL,
+        privacySafe = true,
+        defaultValue = false,
+        excludeFromBackup = false,
+        description =
+            "Dismiss a revision automatically when every page is visually equivalent to the active " +
+                "revision; disabled by default so perceptually similar content is still reviewed",
+    )
+
+    val chapterRevisionVisualAnalysisRetrySeconds: MutableStateFlow<Int> by IntSetting(
+        protoNumber = 122,
+        group = SettingGroup.ARCHIVAL,
+        privacySafe = true,
+        defaultValue = 300,
+        min = 30,
+        max = 86400,
+        excludeFromBackup = true,
+        description = "Seconds before a visual page comparison whose attempt failed is retried",
+    )
+
+    val chapterRevisionVisualAnalysisMaxAttempts: MutableStateFlow<Int> by IntSetting(
+        protoNumber = 123,
+        group = SettingGroup.ARCHIVAL,
+        privacySafe = true,
+        defaultValue = 3,
+        min = 1,
+        max = 100,
+        excludeFromBackup = true,
+        description =
+            "Attempts a visual page comparison gets before the revision proceeds to archival with a " +
+                "failed comparison recorded",
+    )
+
+    val chapterRevisionThumbnailMaxDimension: MutableStateFlow<Int> by IntSetting(
+        protoNumber = 124,
+        group = SettingGroup.ARCHIVAL,
+        privacySafe = true,
+        defaultValue = 480,
+        min = 64,
+        max = 2048,
+        excludeFromBackup = true,
+        description = "Longest edge in pixels of a review thumbnail rendered for a changed page",
+    )
+
+    val chapterIntegrityAuditEnabled: MutableStateFlow<Boolean> by BooleanSetting(
+        protoNumber = 125,
+        group = SettingGroup.ARCHIVAL,
+        privacySafe = true,
+        defaultValue = false,
+        excludeFromBackup = false,
+        description =
+            "Whether the archived artifacts are re-checked against remote storage on a schedule; " +
+                "disabled by default because every check is one command against the remote, and a " +
+                "manual audit is always available",
+    )
+
+    val chapterIntegrityAuditIntervalDays: MutableStateFlow<Int> by IntSetting(
+        protoNumber = 126,
+        group = SettingGroup.ARCHIVAL,
+        privacySafe = true,
+        defaultValue = 90,
+        min = 1,
+        max = 3650,
+        excludeFromBackup = false,
+        description =
+            "Days between two automatic archive integrity audits; shortening it pulls the pending " +
+                "audit in, lengthening it never postpones one that is already scheduled",
+    )
+
+    val chapterIntegrityAuditRecentRevisions: MutableStateFlow<Int> by IntSetting(
+        protoNumber = 127,
+        group = SettingGroup.ARCHIVAL,
+        privacySafe = true,
+        defaultValue = 10,
+        min = 1,
+        max = 1000,
+        excludeFromBackup = false,
+        description =
+            "Newest archived revisions per series an automatic or recent-only integrity audit " +
+                "re-checks; a full-history audit is only ever a manual request",
+    )
+
+    val chapterIntegrityAuditItemDelaySeconds: MutableStateFlow<Int> by IntSetting(
+        protoNumber = 128,
+        group = SettingGroup.ARCHIVAL,
+        privacySafe = true,
+        defaultValue = 2,
+        min = 0,
+        max = 3600,
+        excludeFromBackup = true,
+        description =
+            "Seconds a running integrity audit waits between two revisions, so re-checking a large " +
+                "library does not become one burst of remote commands",
+    )
+
+    val chapterIntegrityAuditRetrySeconds: MutableStateFlow<Int> by IntSetting(
+        protoNumber = 129,
+        group = SettingGroup.ARCHIVAL,
+        privacySafe = true,
+        defaultValue = 300,
+        min = 30,
+        max = 86400,
+        excludeFromBackup = true,
+        description = "Seconds before a revision of an integrity audit whose check was inconclusive is retried",
+    )
+
+    val chapterIntegrityAuditMaxAttempts: MutableStateFlow<Int> by IntSetting(
+        protoNumber = 130,
+        group = SettingGroup.ARCHIVAL,
+        privacySafe = true,
+        defaultValue = 3,
+        min = 1,
+        max = 100,
+        excludeFromBackup = true,
+        description =
+            "Attempts a revision of an integrity audit gets before the check is reported as failed; " +
+                "only a positive absence answer turns an exhausted retry into a missing-payload finding",
+    )
+
+    val archiveDirectDeliveryEnabled: MutableStateFlow<Boolean> by BooleanSetting(
+        protoNumber = 131,
+        group = SettingGroup.ARCHIVAL,
+        privacySafe = true,
+        defaultValue = false,
+        excludeFromBackup = true,
+        description =
+            "Serve an archived revision through a short-lived link generated on the configured rclone " +
+                "remote instead of streaming the mounted copy; disabled by default, because a client that " +
+                "follows the link then fetches the payload straight from the object store",
+    )
+
+    val archiveDirectDeliveryExpirySeconds: MutableStateFlow<Int> by IntSetting(
+        protoNumber = 132,
+        group = SettingGroup.ARCHIVAL,
+        privacySafe = true,
+        defaultValue = 300,
+        min = 60,
+        max = 3600,
+        excludeFromBackup = true,
+        description =
+            "Seconds a generated direct-delivery link is asked to stay valid for; an object store may " +
+                "honour it less precisely, so the link is never the only way a revision can be fetched",
+    )
+
+    val archiveDirectDeliveryFallbackToLocal: MutableStateFlow<Boolean> by BooleanSetting(
+        protoNumber = 133,
+        group = SettingGroup.ARCHIVAL,
+        privacySafe = true,
+        defaultValue = true,
+        excludeFromBackup = true,
+        description =
+            "Stream the immutable mounted archive copy when direct delivery is disabled or a link cannot " +
+                "be generated; disabling it makes a revision downloadable only through a direct link",
+    )
+
+    val archiveDirectDeliveryRequireExpiryEvidence: MutableStateFlow<Boolean> by BooleanSetting(
+        protoNumber = 134,
+        group = SettingGroup.ARCHIVAL,
+        privacySafe = true,
+        defaultValue = true,
+        excludeFromBackup = true,
+        description =
+            "Only redirect a client to a generated link whose signed query proves a bounded expiry within " +
+                "archiveDirectDeliveryExpirySeconds; rclone documents that a backend without expiry support " +
+                "ignores --expire and answers with a link that never expires, so disabling this hands out " +
+                "such a credential whenever the backend's expiry cannot be read here",
+    )
+
     /** ****************************************************************** **/
     /**                                                                    **/
     /**                          Renamed settings                          **/

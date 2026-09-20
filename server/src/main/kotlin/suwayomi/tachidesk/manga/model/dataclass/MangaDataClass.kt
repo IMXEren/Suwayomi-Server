@@ -16,6 +16,19 @@ import suwayomi.tachidesk.manga.impl.util.lang.trimAll
 import suwayomi.tachidesk.manga.model.table.MangaStatus
 import java.time.Instant
 
+/**
+ * Per-series archival acquisition policy.
+ *
+ * [AUTO] acquires and archives chapters without manual approval.
+ * [MANUAL] keeps discovering chapters but requires explicit approval before anything is acquired.
+ * [PAUSED] performs no automatic update checking or acquisition for the series.
+ */
+enum class MangaAcquisitionPolicy {
+    AUTO,
+    MANUAL,
+    PAUSED,
+}
+
 data class MangaDataClass(
     val id: Int,
     val sourceId: String,
@@ -36,6 +49,9 @@ data class MangaDataClass(
     val lastFetchedAt: Long? = 0,
     val chaptersLastFetchedAt: Long? = 0,
     val updateStrategy: UpdateStrategy = UpdateStrategy.ALWAYS_UPDATE,
+    val acquisitionPolicy: MangaAcquisitionPolicy = MangaAcquisitionPolicy.MANUAL,
+    /** null inherits the global default, -1 is unlimited and >= 0 is an explicit count */
+    val acceptedRevisionRetention: Int? = null,
     val freshData: Boolean = false,
     val unreadCount: Long? = null,
     val downloadCount: Long? = null,

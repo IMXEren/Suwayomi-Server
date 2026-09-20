@@ -12,6 +12,7 @@ import eu.kanade.tachiyomi.source.model.UpdateStrategy
 import org.jetbrains.exposed.v1.core.ResultRow
 import org.jetbrains.exposed.v1.core.dao.id.IntIdTable
 import suwayomi.tachidesk.manga.impl.MangaList.proxyThumbnailUrl
+import suwayomi.tachidesk.manga.model.dataclass.MangaAcquisitionPolicy
 import suwayomi.tachidesk.manga.model.dataclass.MangaDataClass
 import suwayomi.tachidesk.manga.model.dataclass.toGenreList
 import suwayomi.tachidesk.manga.model.table.columns.jsonObject
@@ -45,6 +46,14 @@ object MangaTable : IntIdTable() {
     val chaptersLastFetchedAt = long("chapters_last_fetched_at").default(0)
 
     val updateStrategy = varchar("update_strategy", 256).default(UpdateStrategy.ALWAYS_UPDATE.name)
+    val acquisitionPolicy = varchar("acquisition_policy", 256).default(MangaAcquisitionPolicy.MANUAL.name)
+
+    /**
+     * Per-series override of how many superseded accepted revisions to keep in addition to the
+     * active one. Null inherits the global default, -1 means unlimited and >= 0 is an explicit
+     * count.
+     */
+    val acceptedRevisionRetention = integer("accepted_revision_retention").nullable()
 
     // Tachiyomi reader/chapter-list bitmasks, passthrough for sync
     val viewer = integer("viewer").default(0)
@@ -77,6 +86,8 @@ fun MangaTable.toDataClass(mangaEntry: ResultRow) =
         lastFetchedAt = mangaEntry[lastFetchedAt],
         chaptersLastFetchedAt = mangaEntry[chaptersLastFetchedAt],
         updateStrategy = UpdateStrategy.valueOf(mangaEntry[updateStrategy]),
+        acquisitionPolicy = MangaAcquisitionPolicy.valueOf(mangaEntry[acquisitionPolicy]),
+        acceptedRevisionRetention = mangaEntry[acceptedRevisionRetention],
         lastModifiedAt = mangaEntry[lastModifiedAt],
         version = mangaEntry[version],
         memo = mangaEntry[memo],

@@ -6,6 +6,27 @@ import java.sql.ResultSet
 import kotlin.random.Random
 import kotlin.time.Clock
 
+// The watched column set is passed in so the M0056 trigger (which was created before
+// acquisition_policy existed) and its M0066 replacement can share the bump logic without the older
+// one ever reading a column that does not exist yet during the ordered migration sequence.
+private fun ResultSet.bumpVersionOnWatchedColumnChange(
+    oldRow: ResultSet,
+    watchedColumns: List<String>,
+) {
+    if (getBoolean("is_syncing")) return
+    if (watchedColumns.all { oldRow.getObject(it) == getObject(it) }) return
+
+    updateLong("version", getLong("version") + 1)
+}
+
+private val MANGA_VERSION_WATCHED_COLUMNS = listOf("url", "description", "in_library")
+private val MANGA_VERSION_WATCHED_COLUMNS_WITH_ACQUISITION_POLICY =
+    MANGA_VERSION_WATCHED_COLUMNS + "acquisition_policy"
+
+// M0070 adds accepted_revision_retention, so its replacement watches that column too.
+private val MANGA_VERSION_WATCHED_COLUMNS_WITH_ARCHIVAL_RETENTION =
+    MANGA_VERSION_WATCHED_COLUMNS_WITH_ACQUISITION_POLICY + "accepted_revision_retention"
+
 @Suppress("unused")
 class UpdateMangaVersionTrigger : TriggerAdapter() {
     override fun fire(
@@ -13,16 +34,32 @@ class UpdateMangaVersionTrigger : TriggerAdapter() {
         oldRow: ResultSet,
         newRow: ResultSet,
     ) {
-        val isSyncing = newRow.getBoolean("is_syncing")
-        val hasChanged =
-            oldRow.getString("url") != newRow.getString("url") ||
-                oldRow.getString("description") != newRow.getString("description") ||
-                oldRow.getBoolean("in_library") != newRow.getBoolean("in_library")
+        newRow.bumpVersionOnWatchedColumnChange(oldRow, MANGA_VERSION_WATCHED_COLUMNS)
+    }
+}
 
-        if (!isSyncing && hasChanged) {
-            val currentVersion = newRow.getLong("version")
-            newRow.updateLong("version", currentVersion + 1)
-        }
+// M0066 replacement for UpdateMangaVersionTrigger; additionally watches acquisition_policy.
+@Suppress("unused")
+class UpdateMangaVersionWithAcquisitionPolicyTrigger : TriggerAdapter() {
+    override fun fire(
+        conn: Connection,
+        oldRow: ResultSet,
+        newRow: ResultSet,
+    ) {
+        newRow.bumpVersionOnWatchedColumnChange(oldRow, MANGA_VERSION_WATCHED_COLUMNS_WITH_ACQUISITION_POLICY)
+    }
+}
+
+// M0070 replacement for UpdateMangaVersionWithAcquisitionPolicyTrigger; additionally watches
+// accepted_revision_retention.
+@Suppress("unused")
+class UpdateMangaVersionWithArchivalRetentionTrigger : TriggerAdapter() {
+    override fun fire(
+        conn: Connection,
+        oldRow: ResultSet,
+        newRow: ResultSet,
+    ) {
+        newRow.bumpVersionOnWatchedColumnChange(oldRow, MANGA_VERSION_WATCHED_COLUMNS_WITH_ARCHIVAL_RETENTION)
     }
 }
 
@@ -58,6 +95,12 @@ private fun ResultSet.stampLastModifiedAt(
     updateLong("last_modified_at", Clock.System.now().epochSeconds)
 }
 
+private val MANGA_LAST_MODIFIED_WATCHED_COLUMNS = listOf("url", "description", "in_library", "version")
+private val MANGA_LAST_MODIFIED_WATCHED_COLUMNS_WITH_ACQUISITION_POLICY =
+    MANGA_LAST_MODIFIED_WATCHED_COLUMNS + "acquisition_policy"
+private val MANGA_LAST_MODIFIED_WATCHED_COLUMNS_WITH_ARCHIVAL_RETENTION =
+    MANGA_LAST_MODIFIED_WATCHED_COLUMNS_WITH_ACQUISITION_POLICY + "accepted_revision_retention"
+
 @Suppress("unused")
 class UpdateMangaLastModifiedAtTrigger : TriggerAdapter() {
     override fun fire(
@@ -65,7 +108,32 @@ class UpdateMangaLastModifiedAtTrigger : TriggerAdapter() {
         oldRow: ResultSet?,
         newRow: ResultSet,
     ) {
-        newRow.stampLastModifiedAt(oldRow, listOf("url", "description", "in_library", "version"))
+        newRow.stampLastModifiedAt(oldRow, MANGA_LAST_MODIFIED_WATCHED_COLUMNS)
+    }
+}
+
+// M0066 replacement for UpdateMangaLastModifiedAtTrigger; additionally watches acquisition_policy.
+@Suppress("unused")
+class UpdateMangaLastModifiedAtWithAcquisitionPolicyTrigger : TriggerAdapter() {
+    override fun fire(
+        conn: Connection,
+        oldRow: ResultSet?,
+        newRow: ResultSet,
+    ) {
+        newRow.stampLastModifiedAt(oldRow, MANGA_LAST_MODIFIED_WATCHED_COLUMNS_WITH_ACQUISITION_POLICY)
+    }
+}
+
+// M0070 replacement for UpdateMangaLastModifiedAtWithAcquisitionPolicyTrigger; additionally watches
+// accepted_revision_retention.
+@Suppress("unused")
+class UpdateMangaLastModifiedAtWithArchivalRetentionTrigger : TriggerAdapter() {
+    override fun fire(
+        conn: Connection,
+        oldRow: ResultSet?,
+        newRow: ResultSet,
+    ) {
+        newRow.stampLastModifiedAt(oldRow, MANGA_LAST_MODIFIED_WATCHED_COLUMNS_WITH_ARCHIVAL_RETENTION)
     }
 }
 

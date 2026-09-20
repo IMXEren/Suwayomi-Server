@@ -7,11 +7,12 @@ on:
       - main
       - dev
 
-# A release must never be cancelled half way; a semantic-release run either
-# finishes its tag/release/backmerge or is not started at all.
+# A newer push supersedes an older release run on the same branch. Two runs that execute
+# semantic-release at the same time race for the same version tag, which fails one of them
+# with "git tag ... exit code 128" and leaves an orphan tag behind.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 permissions:
   contents: write

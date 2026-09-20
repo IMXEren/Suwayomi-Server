@@ -157,7 +157,7 @@ buildConfig {
 
     buildConfigField("String", "WEBUI_TAG", quoteWrap(webUIRevisionTag))
 
-    buildConfigField("String", "GITHUB", quoteWrap("https://github.com/Suwayomi/Suwayomi-Server"))
+    buildConfigField("String", "GITHUB", quoteWrap("https://github.com/IMXEren/Suwayomi-Server"))
     buildConfigField("String", "DISCORD", quoteWrap("https://discord.gg/DDZdqZWaHA"))
     buildConfigField("String", "JCEF_VERSION", quoteWrap(libs.versions.jcef.get()))
     buildConfigField("String", "JCEF_JBR_RELEASE", quoteWrap(webviewJbrRelease))

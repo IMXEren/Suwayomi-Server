@@ -260,8 +260,14 @@ tasks {
         }
     }
 
-    runKtlintCheckOverMainSourceSet {
-        mustRunAfter(generateJte)
+    // the main source set contains generated sources written by both the settings generator
+    // (build/generated/src/main/kotlin) and the JTE plugin, so both ktlint main source set tasks
+    // must depend on the generators instead of only being ordered after them; a plain mustRunAfter
+    // does not schedule the generators and lets ktlint read a half-written source directory
+    listOf(runKtlintCheckOverMainSourceSet, runKtlintFormatOverMainSourceSet).forEach { ktlintTask ->
+        ktlintTask {
+            dependsOn(generateJte, ":server:server-config-generate:generateSettings")
+        }
     }
 
     compileKotlin {

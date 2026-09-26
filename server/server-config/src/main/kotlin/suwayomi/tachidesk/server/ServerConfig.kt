@@ -26,6 +26,7 @@ import kotlinx.coroutines.flow.onEach
 import org.jetbrains.exposed.v1.core.SortOrder
 import suwayomi.tachidesk.graphql.types.AuthMode
 import suwayomi.tachidesk.graphql.types.CbzMediaType
+import suwayomi.tachidesk.graphql.types.WebViewProvider
 import suwayomi.tachidesk.graphql.types.DatabaseType
 import suwayomi.tachidesk.graphql.types.DownloadConversion
 import suwayomi.tachidesk.graphql.types.KoreaderSyncChecksumMethod
@@ -1640,6 +1641,43 @@ class ServerConfig(
             ),
         readMigrated = { authPassword.value },
         setMigrated = { authPassword.value = it },
+    )
+
+    val webViewProvider: MutableStateFlow<WebViewProvider> by EnumSetting(
+        protoNumber = 135,
+        group = SettingGroup.WEB_VIEW,
+        privacySafe = true,
+        defaultValue = WebViewProvider.CEF,
+        enumClass = WebViewProvider::class,
+        typeInfo = SettingsRegistry.PartialTypeInfo(imports = listOf("suwayomi.tachidesk.graphql.types.WebViewProvider")),
+        description =
+            "Which browser backs the WebView: the one embedded in the server, or one running in " +
+                "the external browser service and shown through that service's web VNC endpoint",
+    )
+
+    val webViewVncUrl: MutableStateFlow<String> by StringSetting(
+        protoNumber = 136,
+        group = SettingGroup.WEB_VIEW,
+        privacySafe = true,
+        defaultValue = "http://vnc:6080",
+        pattern = Regex("^https?://[^\\s/]+.*$"),
+        maxLength = 512,
+        description =
+            "Address of the external browser service's web VNC endpoint, used when the WebView " +
+                "provider is not the embedded browser",
+    )
+
+    val webViewOpenTimeout: MutableStateFlow<Int> by IntSetting(
+        protoNumber = 137,
+        group = SettingGroup.WEB_VIEW,
+        privacySafe = true,
+        defaultValue = 180,
+        min = 10,
+        max = 3600,
+        description =
+            "Seconds opening a page in the external browser may take. It is its own setting because " +
+                "it is a different shape of work from the challenge solver's budget: a browser start, " +
+                "a navigation and a solve, which have to fit inside one call",
     )
 
     @OptIn(ExperimentalCoroutinesApi::class)

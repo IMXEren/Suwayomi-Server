@@ -14,6 +14,7 @@ import io.javalin.apibuilder.ApiBuilder.ws
 import suwayomi.tachidesk.global.controller.GlobalMetaController
 import suwayomi.tachidesk.global.controller.SettingsController
 import suwayomi.tachidesk.global.controller.WebViewController
+import suwayomi.tachidesk.global.controller.WebViewVncController
 
 object GlobalAPI {
     fun defineEndpoints() {
@@ -28,6 +29,14 @@ object GlobalAPI {
         path("webview") {
             get("", WebViewController.webview)
             ws("", WebViewController::webviewWS)
+
+            // The external browser's web VNC endpoint, served on this origin so that nothing has
+            // to be published and the server's own authentication is what guards it.
+            path("vnc") {
+                get("", WebViewVncController::vncIndex)
+                get("<path>", WebViewVncController::vncAsset)
+                ws("socket", WebViewVncController::vncSocket)
+            }
         }
     }
 }

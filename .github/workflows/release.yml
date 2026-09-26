@@ -1,0 +1,101 @@
+name: Release
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - dev
+
+# A newer push supersedes an older release run on the same branch. Two runs that execute
+# semantic-release at the same time race for the same version tag, which fails one of them
+# with "git tag ... exit code 128" and leaves an orphan tag behind.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout server (${{ github.ref_name }})
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      # The fork ships the matching WebUI branch instead of the upstream
+      # preview WebUI, so main releases bundle WebUI main and dev releases
+      # bundle WebUI dev.
+      # A full clone is required: the bundled WebUI build derives its revision from the
+      # repository commit history, so a shallow clone makes every release advertise the
+      # same revision.
+      - name: Checkout Suwayomi-WebUI (${{ github.ref_name }})
+        uses: actions/checkout@v7
+        with:
+          repository: IMXEren/Suwayomi-WebUI
+          ref: ${{ github.ref_name }}
+          path: webui
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Validate Gradle Wrapper
+        uses: gradle/actions/wrapper-validation@v5
+
+      - name: Set up JDK
+        uses: actions/setup-java@v6
+        with:
+          java-version: 25
+          distribution: 'zulu'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v5
+
+      - name: Copy CI gradle.properties
+        run: |
+          mkdir -p ~/.gradle
+          cp .github/runner-files/ci-gradle.properties ~/.gradle/gradle.properties
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: '11.1.2'
+
+      - name: Build WebUI
+        working-directory: webui
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+          mkdir -p buildZip
+          pnpm build-zip
+
+      # shadowJar does not depend on downloadWebUI (the task only has a
+      # mustRunAfter ordering), so the custom WebUI zip placed here is the one
+      # that ends up inside the fat jar.
+      - name: Bundle WebUI into server resources
+        run: cp webui/buildZip/*.zip server/src/main/resources/WebUI.zip
+
+      - name: Install semantic-release dependencies
+        run: npm ci
+
+      - name: Release
+        id: release
+        uses: cycjimmy/semantic-release-action@v5
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GIT_AUTHOR_NAME: github-actions[bot]
+          GIT_AUTHOR_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
+          GIT_COMMITTER_NAME: github-actions[bot]
+          GIT_COMMITTER_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com

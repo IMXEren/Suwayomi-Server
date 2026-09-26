@@ -157,7 +157,7 @@ buildConfig {
 
     buildConfigField("String", "WEBUI_TAG", quoteWrap(webUIRevisionTag))
 
-    buildConfigField("String", "GITHUB", quoteWrap("https://github.com/Suwayomi/Suwayomi-Server"))
+    buildConfigField("String", "GITHUB", quoteWrap("https://github.com/IMXEren/Suwayomi-Server"))
     buildConfigField("String", "DISCORD", quoteWrap("https://discord.gg/DDZdqZWaHA"))
     buildConfigField("String", "JCEF_VERSION", quoteWrap(libs.versions.jcef.get()))
     buildConfigField("String", "JCEF_JBR_RELEASE", quoteWrap(webviewJbrRelease))
@@ -260,8 +260,14 @@ tasks {
         }
     }
 
-    runKtlintCheckOverMainSourceSet {
-        mustRunAfter(generateJte)
+    // the main source set contains generated sources written by both the settings generator
+    // (build/generated/src/main/kotlin) and the JTE plugin, so both ktlint main source set tasks
+    // must depend on the generators instead of only being ordered after them; a plain mustRunAfter
+    // does not schedule the generators and lets ktlint read a half-written source directory
+    listOf(runKtlintCheckOverMainSourceSet, runKtlintFormatOverMainSourceSet).forEach { ktlintTask ->
+        ktlintTask {
+            dependsOn(generateJte, ":server:server-config-generate:generateSettings")
+        }
     }
 
     compileKotlin {

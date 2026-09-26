@@ -39,6 +39,8 @@ open class SettingDelegate<T : Any>(
     protected val description: String? = null,
     protected val excludeFromBackup: Boolean? = null,
     val privacySafe: Boolean,
+    /** true when the value must never be read back into a GraphQL-serializable settings object */
+    val secret: Boolean = false,
 ) {
     var flow: MutableStateFlow<T>? = null
     lateinit var propertyName: String
@@ -94,6 +96,7 @@ open class SettingDelegate<T : Any>(
                     },
                 excludeFromBackup = excludeFromBackup,
                 privacySafe = privacySafe,
+                secret = secret,
             ),
         )
 
@@ -228,6 +231,7 @@ class StringSetting(
     description: String? = null,
     excludeFromBackup: Boolean? = null,
     privacySafe: Boolean,
+    secret: Boolean = false,
 ) : SettingDelegate<String>(
         protoNumber = protoNumber,
         defaultValue = defaultValue,
@@ -253,6 +257,7 @@ class StringSetting(
         description = description,
         excludeFromBackup = excludeFromBackup,
         privacySafe = privacySafe,
+        secret = secret,
     )
 
 abstract class RangeSetting<T : Comparable<T>>(

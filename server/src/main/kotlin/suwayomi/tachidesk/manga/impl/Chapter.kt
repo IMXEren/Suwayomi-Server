@@ -38,6 +38,7 @@ import suwayomi.tachidesk.manga.impl.download.DownloadManager.EnqueueInput
 import suwayomi.tachidesk.manga.impl.track.Track
 import suwayomi.tachidesk.manga.impl.util.updateChapterDownloadDir
 import suwayomi.tachidesk.manga.model.dataclass.ChapterDataClass
+import suwayomi.tachidesk.manga.model.dataclass.ChapterRevisionDiscoveryReason
 import suwayomi.tachidesk.manga.model.dataclass.MangaChapterDataClass
 import suwayomi.tachidesk.manga.model.dataclass.PaginatedList
 import suwayomi.tachidesk.manga.model.dataclass.paginatedFrom
@@ -168,15 +169,22 @@ object Chapter {
                     .map { ChapterTable.toDataClass(it) }
                     .toList()
             }
+        val chaptersInDbByUrl = chaptersInDb.associateBy { it.url }
+        val chaptersInDbById = chaptersInDb.associateBy { it.id }
 
         // new chapters after they have been added to the database for auto downloads
         val insertedChapterIds = mutableListOf<Int>()
 
+        // reconciliation writes revision candidates inside the transaction; the acquisition worker
+        // may only be woken once that transaction has committed
+        var createdRevisionCandidates = false
+
         val chaptersToInsert = mutableListOf<ChapterDataClass>() // do not yet have an ID from the database
         val chaptersToUpdate = mutableListOf<ChapterDataClass>()
+        val metadataChangeDiscoveries = mutableListOf<ChapterRevisionDiscovery>()
 
         uniqueChapters.reversed().forEachIndexed { index, fetchedChapter ->
-            val chapterEntry = chaptersInDb.find { it.url == fetchedChapter.url }
+            val chapterEntry = chaptersInDbByUrl[fetchedChapter.url]
 
             val chapterData =
                 ChapterDataClass.fromSChapter(
@@ -208,6 +216,15 @@ object Chapter {
                         chapterData
                     }
                 chaptersToUpdate.add(newChapterData)
+                val changedFields = ChapterRevision.changedMetadataFields(chapterEntry, newChapterData)
+                if (changedFields.isNotEmpty()) {
+                    metadataChangeDiscoveries +=
+                        ChapterRevisionDiscovery(
+                            chapter = newChapterData,
+                            reason = ChapterRevisionDiscoveryReason.METADATA_CHANGE,
+                            changedMetadataFields = changedFields,
+                        )
+                }
             }
         }
 
@@ -277,6 +294,10 @@ object Chapter {
 
                 insertedChapters.forEach { insertedChapterIds.add(it.id) }
 
+                // durable approval/backlog candidates, independent of the legacy auto-download flow
+                createdRevisionCandidates =
+                    ChapterRevision.createCandidatesForNewChapters(mangaEntry, insertedChapters, now).isNotEmpty()
+
                 val chaptersToPreserveDownload =
                     insertedChapters.filter { chapter ->
                         val deletedChapter =
@@ -309,7 +330,7 @@ object Chapter {
                         chaptersToUpdate.forEach {
                             addBatch(EntityID(it.id, ChapterTable))
 
-                            val currentChapter = chaptersInDb.find { dbChapter -> dbChapter.id == it.id }!!
+                            val currentChapter = chaptersInDbById.getValue(it.id)
 
                             this[ChapterTable.name] = it.name
                             this[ChapterTable.date_upload] = it.uploadDate
@@ -333,11 +354,22 @@ object Chapter {
                         }
                     }.toExecutable()
                     .execute(this@suspendTransaction)
+
+                if (metadataChangeDiscoveries.isNotEmpty()) {
+                    createdRevisionCandidates =
+                        ChapterRevision
+                            .createCandidatesForMetadataChanges(mangaEntry, metadataChangeDiscoveries, now)
+                            .isNotEmpty() || createdRevisionCandidates
+                }
             }
 
             MangaTable.update({ MangaTable.id eq mangaEntry[MangaTable.id].value }) {
                 it[chaptersLastFetchedAt] = Instant.now().epochSecond
             }
+        }
+
+        if (createdRevisionCandidates) {
+            ChapterRevisionAcquisitionExecutor.notifyWorkAvailable()
         }
 
         if (mangaEntry[MangaTable.inLibrary]) {

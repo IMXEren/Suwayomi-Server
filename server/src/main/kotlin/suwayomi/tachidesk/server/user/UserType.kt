@@ -9,6 +9,14 @@ import suwayomi.tachidesk.server.JavalinSetup.Attribute
 import suwayomi.tachidesk.server.JavalinSetup.getAttribute
 import suwayomi.tachidesk.server.serverConfig
 
+/**
+ * Name of the cookie a web client sets so that its own sub-resource requests carry its token.
+ *
+ * A page opened with the token in its query string authenticates the navigation itself, but not
+ * the files it then loads, and a browser cannot put an authorization header on those requests.
+ */
+const val SERVER_TOKEN_COOKIE: String = "suwayomi-server-token"
+
 sealed class UserType {
     class Admin(
         val id: Int,
@@ -51,6 +59,14 @@ fun getUserFromToken(token: String?): UserType {
     return Jwt.verifyJwt(token)
 }
 
+/**
+ * The token a request presents, in the order the login modes look for it.
+ */
+fun getTokenFromContext(ctx: Context): String? {
+    val authentication = ctx.header(Header.AUTHORIZATION) ?: ctx.cookie(SERVER_TOKEN_COOKIE)
+    return authentication?.substringAfter("Bearer ") ?: ctx.queryParam("token")
+}
+
 fun getUserFromContext(ctx: Context): UserType {
     fun cookieValid(): Boolean {
         val username = ctx.sessionAttribute<String>("logged-in") ?: return false
@@ -68,15 +84,21 @@ fun getUserFromContext(ctx: Context): UserType {
         }
 
         AuthMode.UI_LOGIN -> {
-            val authentication = ctx.header(Header.AUTHORIZATION) ?: ctx.cookie("suwayomi-server-token")
-            val token = authentication?.substringAfter("Bearer ") ?: ctx.queryParam("token")
-
-            getUserFromToken(token)
+            getUserFromToken(getTokenFromContext(ctx))
         }
     }
 }
 
-fun getUserFromWsContext(ctx: WsConnectContext): UserType {
+/**
+ * The user a websocket handshake presents.
+ *
+ * [acceptCookie] is false where the cookie must not be enough on its own, because a browser
+ * attaches cookies to a handshake made from any origin.
+ */
+fun getUserFromWsContext(
+    ctx: WsConnectContext,
+    acceptCookie: Boolean = true,
+): UserType {
     fun cookieValid(): Boolean {
         val username = ctx.sessionAttribute<String>("logged-in") ?: return false
         return username == serverConfig.authUsername.value
@@ -94,7 +116,9 @@ fun getUserFromWsContext(ctx: WsConnectContext): UserType {
 
         AuthMode.UI_LOGIN -> {
             val authentication =
-                ctx.header(Header.AUTHORIZATION) ?: ctx.header("Sec-WebSocket-Protocol") ?: ctx.cookie("suwayomi-server-token")
+                ctx.header(Header.AUTHORIZATION)
+                    ?: ctx.header("Sec-WebSocket-Protocol")
+                    ?: if (acceptCookie) ctx.cookie(SERVER_TOKEN_COOKIE) else null
             val token = authentication?.substringAfter("Bearer ") ?: ctx.queryParam("token")
 
             getUserFromToken(token)

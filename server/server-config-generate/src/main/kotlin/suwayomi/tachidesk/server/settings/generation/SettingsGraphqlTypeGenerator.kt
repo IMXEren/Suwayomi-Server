@@ -119,7 +119,6 @@ object SettingsGraphqlTypeGenerator {
             appendLine("${getConfigAccess(setting)},".addIndentation(indentation))
             return
         }
-
         if (setting.requiresRestart) {
             appendLine("@GraphQLIgnore".addIndentation(indentation))
         }
@@ -140,7 +139,9 @@ object SettingsGraphqlTypeGenerator {
         }
 
         val overridePrefix = if (isOverride) "override " else ""
-        val nullableSuffix = if (isNullable) "?" else ""
+        // a secret is write-only, so its generated property is nullable even where every other
+        // setting is concrete: the only value the generator can put there is the absence itself
+        val nullableSuffix = if (isNullable || setting.secret) "?" else ""
         val commaSuffix = if (isOverride) "," else ""
         appendLine(
             "${overridePrefix}val ${setting.name}: ${getGraphQLType(
@@ -166,6 +167,14 @@ object SettingsGraphqlTypeGenerator {
     }
 
     private fun getConfigAccess(setting: SettingsRegistry.SettingMetadata): String {
+        // A secret value is never read into the settings object that GraphQL serializes, logs or
+        // echoes: the object could leak it. The absence is emitted instead, and because the partial
+        // update machinery skips nulls, a client that echoes a settings response back can never
+        // overwrite the configured secret. The runtime reads the real value from the config directly.
+        if (setting.secret) {
+            return "null"
+        }
+
         if (setting.typeInfo.convertToGqlType != null) {
             return "SettingsRegistry.get(\"${setting.name}\")!!.typeInfo.convertToGqlType!!(" +
                 "config.${setting.name}.value" +

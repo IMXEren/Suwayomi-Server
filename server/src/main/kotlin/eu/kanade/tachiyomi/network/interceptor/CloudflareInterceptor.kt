@@ -3,7 +3,6 @@ package eu.kanade.tachiyomi.network.interceptor
 import eu.kanade.tachiyomi.network.NetworkHelper
 import eu.kanade.tachiyomi.network.POST
 import eu.kanade.tachiyomi.network.awaitSuccess
-import eu.kanade.tachiyomi.network.parseAs
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.flow.SharingStarted
@@ -16,6 +15,7 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import okhttp3.Cookie
+import okhttp3.Headers
 import okhttp3.HttpUrl
 import okhttp3.Interceptor
 import okhttp3.MediaType.Companion.toMediaType
@@ -25,6 +25,8 @@ import okhttp3.Response
 import okhttp3.ResponseBody.Companion.toResponseBody
 import okio.Buffer
 import suwayomi.tachidesk.server.serverConfig
+import suwayomi.tachidesk.server.util.asDirectClient
+import suwayomi.tachidesk.server.util.buildSocksProxyUrl
 import uy.kohesive.injekt.injectLazy
 import java.io.IOException
 import java.util.concurrent.CompletableFuture
@@ -209,21 +211,33 @@ class CloudflareInterceptor(
 object CFClearance {
     private val logger = KotlinLogging.logger {}
     private val network: NetworkHelper by injectLazy()
+
+    /**
+     * Base client for solver calls, made direct: the solver is reached on an internal name, which
+     * the server's own SOCKS proxy setting would otherwise send to the upstream proxy instead.
+     */
+    private val directClient by lazy { network.client.asDirectClient() }
+
     private val client by lazy {
         @Suppress("OPT_IN_USAGE")
         serverConfig.flareSolverrTimeout
             .map { timeoutInt ->
                 val timeout = timeoutInt.seconds
-                network.client
+                directClient
                     .newBuilder()
                     .callTimeout(timeout.plus(10.seconds).toJavaDuration())
                     .readTimeout(timeout.plus(5.seconds).toJavaDuration())
                     .build()
-            }.stateIn(GlobalScope, SharingStarted.Eagerly, network.client)
+            }
+            // The initial value is direct already, so a call made before the flow emits is not proxied.
+            .stateIn(GlobalScope, SharingStarted.Eagerly, directClient)
     }
     private val json: Json by injectLazy()
     private val jsonMediaType = "application/json".toMediaType()
     private val mutex = Mutex()
+
+    /** The wording the solver uses to refuse a session that belongs to another egress. */
+    private const val SESSION_BOUND_ELSEWHERE = "is bound to a different egress"
 
     sealed class Result {
         data class CloudflareBypassed(
@@ -260,6 +274,11 @@ object CFClearance {
     )
 
     @Serializable
+    data class FlareSolverProxy(
+        val url: String,
+    )
+
+    @Serializable
     data class FlareSolverRequest(
         val cmd: String,
         val url: String,
@@ -269,9 +288,17 @@ object CFClearance {
         val sessionTtlMinutes: Int? = null,
         val cookies: List<FlareSolverCookie>? = null,
         val returnOnlyCookies: Boolean? = null,
-        val proxy: String? = null,
+        val proxy: FlareSolverProxy? = null,
         val postData: String? = null, // only used with cmd 'request.post'
     )
+
+    /**
+     * The request with the configured proxy applied, keeping the session it already carries: the
+     * proxy selects the egress and the session serializes that egress's work, so one must not
+     * discard the other.
+     */
+    internal fun FlareSolverRequest.withRequestProxy(proxyUrl: String?): FlareSolverRequest =
+        proxyUrl?.let { copy(proxy = FlareSolverProxy(it)) } ?: this
 
     @Serializable
     data class FlareSolverSolutionCookie(
@@ -312,48 +339,74 @@ object CFClearance {
         onlyCookies: Boolean,
     ): FlareSolverResponse {
         val timeout = serverConfig.flareSolverrTimeout.value.seconds
-        return with(json) {
-            mutex.withLock {
-                client.value
-                    .newCall(
-                        POST(
-                            url = serverConfig.flareSolverrUrl.value.removeSuffix("/") + "/v1",
-                            body =
-                                Json
-                                    .encodeToString(
-                                        FlareSolverRequest(
-                                            "request.${originalRequest.method.lowercase()}",
-                                            originalRequest.url.toString(),
-                                            session = serverConfig.flareSolverrSessionName.value,
-                                            sessionTtlMinutes = serverConfig.flareSolverrSessionTtl.value,
-                                            cookies =
-                                                network.cookieStore
-                                                    .get(originalRequest.url)
-                                                    .filter { it.name !in CloudflareInterceptor.COOKIE_NAMES }
-                                                    .map { cookie ->
-                                                        FlareSolverCookie(cookie.name, cookie.value)
-                                                    },
-                                            returnOnlyCookies = onlyCookies,
-                                            maxTimeout = timeout.inWholeMilliseconds.toInt(),
-                                            postData =
-                                                if (originalRequest.method == "POST") {
-                                                    originalRequest.body
-                                                        ?.let { body ->
-                                                            Buffer()
-                                                                .also { body.writeTo(it) }
-                                                                .readUtf8()
-                                                        }.orEmpty()
-                                                } else {
-                                                    null
-                                                },
-                                        ),
-                                    ).toRequestBody(jsonMediaType),
-                        ),
-                    ).awaitSuccess()
-                    .parseAs<FlareSolverResponse>()
+        val socksProxy =
+            buildSocksProxyUrl(
+                serverConfig.socksProxyEnabled.value,
+                serverConfig.socksProxyVersion.value,
+                serverConfig.socksProxyHost.value,
+                serverConfig.socksProxyPort.value,
+            )
+
+        val request =
+            FlareSolverRequest(
+                "request.${originalRequest.method.lowercase()}",
+                originalRequest.url.toString(),
+                session = serverConfig.flareSolverrSessionName.value,
+                sessionTtlMinutes = serverConfig.flareSolverrSessionTtl.value,
+                cookies =
+                    network.cookieStore
+                        .get(originalRequest.url)
+                        .filter { it.name !in CloudflareInterceptor.COOKIE_NAMES }
+                        .map { cookie -> FlareSolverCookie(cookie.name, cookie.value) },
+                returnOnlyCookies = onlyCookies,
+                maxTimeout = timeout.inWholeMilliseconds.toInt(),
+                postData =
+                    if (originalRequest.method == "POST") {
+                        originalRequest.body
+                            ?.let { body ->
+                                Buffer()
+                                    .also { body.writeTo(it) }
+                                    .readUtf8()
+                            }.orEmpty()
+                    } else {
+                        null
+                    },
+            ).withRequestProxy(socksProxy)
+
+        return mutex.withLock {
+            val answered = ask(request, socksProxy)
+            if (answered.refusedTheSession()) {
+                // A session is bound to the egress of its first use. Retrying without it would
+                // silently turn a configured session off, so this reports what to reconcile instead.
+                throw IOException(
+                    "The challenge solver refused session '${request.session}' because it is bound to a different " +
+                        "egress: point server.socksProxyHost/server.socksProxyPort at that egress, or set " +
+                        "server.flareSolverrSessionName to a new session.",
+                )
             }
+            json.decodeFromString<FlareSolverResponse>(answered)
         }
     }
+
+    /** Post one solver request and return its body unread, because a refusal has no solution. */
+    private suspend fun ask(
+        request: FlareSolverRequest,
+        socksProxy: String?,
+    ): String {
+        val response =
+            client.value
+                .newCall(
+                    POST(
+                        url = serverConfig.flareSolverrUrl.value.removeSuffix("/") + "/v1",
+                        headers = socksProxy?.let { Headers.headersOf("X-Proxy-Server", it) } ?: Headers.headersOf(),
+                        body = Json.encodeToString(request).toRequestBody(jsonMediaType),
+                    ),
+                ).awaitSuccess()
+        return response.use { it.body.string() }
+    }
+
+    /** Whether the reply is the solver refusing the session because it belongs to another egress. */
+    private fun String.refusedTheSession(): Boolean = SESSION_BOUND_ELSEWHERE in this
 
     fun requestWithFlareSolverr(
         flareSolverResponse: FlareSolverResponse,

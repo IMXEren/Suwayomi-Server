@@ -186,7 +186,21 @@ Deep changes to extension handling should be avoided.
 
 # 5. Per-series update policies
 
-Update behavior should be configured individually for each series.
+Update behavior is configured per series, but a series does not have to carry a policy of its own.
+
+There is a configurable global default, `archiveDefaultAcquisitionPolicy` (default `MANUAL`), and the per-series policy is an **optional override**:
+
+```text
+stored per-series override (nullable)
+        │
+        ├── set (AUTO / MANUAL / PAUSED) ──► used as-is, always wins over the default
+        │
+        └── null ─────────────────────────► inherits archiveDefaultAcquisitionPolicy
+```
+
+An explicit override — `MANUAL` included — is a choice, not "the default": it keeps winning even after the global default changes, and only clearing it (the WebUI's "Use global default", the `inheritAcquisitionPolicy` mutation flag) returns the series to inheritance. The API therefore exposes two fields: `acquisitionPolicy` (the effective, non-null value the series actually applies) and `acquisitionPolicyOverride` (nullable; null means "inherits").
+
+Migration `M0080` is what makes this possible: the column becomes nullable and loses its own `MANUAL` default, and the existing concrete `MANUAL` rows are deliberately **not** rewritten, so every already-stored value — `MANUAL` included — stays an explicit override.
 
 A useful initial policy model is:
 
@@ -1404,7 +1418,9 @@ Behavior:
 The fork introduces only the concepts needed for the update model. What actually exists, next to the abstraction that was sketched here:
 
 ```text
-MangaAcquisitionPolicy        MangaTable.acquisitionPolicy (AUTO / MANUAL / PAUSED)
+MangaAcquisitionPolicy        MangaTable.acquisitionPolicy is a nullable per-series override
+                              (AUTO / MANUAL / PAUSED); null inherits
+                              serverConfig.archiveDefaultAcquisitionPolicy
 
 ChapterRevision               ChapterRevisionTable, with independent acquisition, archive,
                               publication, retention and integrity state dimensions
@@ -1440,9 +1456,11 @@ MangaAcquisitionPolicy
 ├── AUTO
 ├── MANUAL
 └── PAUSED
+
+effective policy = stored per-series override (if set) ?? archiveDefaultAcquisitionPolicy
 ```
 
-`NOTIFY_ONLY` from the original sketch is not implemented (section 5).
+A series with no stored override inherits `archiveDefaultAcquisitionPolicy` (default `MANUAL`); an explicit `MANUAL` override stays an explicit choice. `NOTIFY_ONLY` from the original sketch is not implemented (section 5).
 
 Revision model:
 
@@ -1693,7 +1711,11 @@ Status of the confirmed phases, as implemented in this fork. This section is del
 
 ```text
 per-series acquisition policy (AUTO / MANUAL / PAUSED)
-    MangaTable.acquisitionPolicy, MangaType, backup + SyncYomi triggers, WebUI control
+    MangaTable.acquisitionPolicy is nullable: a stored value is an explicit override, null inherits
+    the configurable archiveDefaultAcquisitionPolicy; MangaType exposes the effective non-null
+    acquisitionPolicy plus the nullable acquisitionPolicyOverride; the backup field carries a
+    presence marker so an explicit inherit is distinguishable from a legacy backup; SyncYomi
+    triggers and a WebUI control
 
 chapter revision candidates
     ChapterRevisionTable + ChapterRevisionDataClass, deterministic content-hash candidate keys,
@@ -1731,12 +1753,15 @@ metadata-triggered discovery
 
 backup bootstrap
     one durable session plus per-manga items, category-resolved policy snapshots, explicit one-time
-    refresh of each imported manga, idempotent BOOTSTRAP_IMPORT candidates, pause/resume/cancel/retry
+    refresh of each imported manga, idempotent BOOTSTRAP_IMPORT candidates, pause/resume/cancel/retry;
+    the resolved policy is snapshotted on each item and written onto the series as an explicit
+    override when it is processed — the one place a policy is written outside a per-series mutation
 
 resumable backup restore
     uploaded bytes staged and integrity-checked atomically, existing restore handlers resume by
     persisted phase and manga index, unresolved sources and per-manga failures audited, optional
-    handoff of only the imported subset into bootstrap
+    handoff of only the imported subset into bootstrap; the acquisition policy is applied only when
+    the backup marks it present, so an old or unknown-client backup cannot reset a stored override
 
 revision sweeps
     durable scheduled/manual sessions and per-chapter items at global concurrency 1, scheduled
@@ -1771,7 +1796,7 @@ direct delivery
 
 ## Migrations
 
-The archival work spans migrations `M0065` through `M0079`. Each is paired with a test that runs the migration and asserts the resulting schema.
+The archival work spans migrations `M0065` through `M0080`. Each is paired with a test that runs the migration and asserts the resulting schema.
 
 ```text
 M0065  MangaAcquisitionPolicy            per-series acquisition policy
@@ -1789,11 +1814,14 @@ M0076  ChapterRevisionSweep             sweep sessions, items and schedule
 M0077  ChapterRevisionVisualAnalysis    analysis jobs, alignments and thumbnails
 M0078  CanonicalIdentity                canonical works and source bindings
 M0079  ChapterRevisionIntegrityAudit    audit sessions, items, findings and schedule
+M0080  ArchiveDefaultAcquisitionPolicy  acquisition_policy becomes nullable and loses its DB default,
+                                        so a series without an override inherits the global default;
+                                        existing rows — MANUAL included — stay explicit overrides
 ```
 
 Every migration is written for both H2 and PostgreSQL. Migrations perform only the bounded compatibility backfills needed for new invariants or workers—for example acquisition-policy defaults, chapter identity keys, and making already-pending verification rows immediately due. They deliberately do **not** backfill the existing chapter catalog into revision candidates; only newly reconciled chapters of in-library manga create candidates.
 
-Migration tests are named after their migration (`M0065`-`M0079` in `server/src/test/kotlin/suwayomi/tachidesk/server/database`), with one exception: `M0074` is asserted by `ArchiveBootstrapMigrationTest`, which lives beside the bootstrap tests in `server/src/test/kotlin/suwayomi/tachidesk/manga/impl/ArchiveBootstrapTest.kt`.
+Migration tests are named after their migration (`M0065`-`M0080` in `server/src/test/kotlin/suwayomi/tachidesk/server/database`), with one exception: `M0074` is asserted by `ArchiveBootstrapMigrationTest`, which lives beside the bootstrap tests in `server/src/test/kotlin/suwayomi/tachidesk/manga/impl/ArchiveBootstrapTest.kt`.
 
 ## What the archive still guarantees
 
@@ -1802,12 +1830,17 @@ Migration tests are named after their migration (`M0065`-`M0079` in `server/src/
 - A rollback never writes archive files itself; it changes which revision is active and lets the publication worker republish.
 - Canonical identity never asserts chapter equivalence across sources and never merges or deletes revisions.
 - No signed remote address is persisted or exposed through GraphQL.
+- A series' policy default is configuration, not data: changing `archiveDefaultAcquisitionPolicy` never rewrites a stored per-series override, and a backup that does not mark the policy present never clears one.
 
 ## Deployment checklist
 
 The settings below live in the `Archival` settings group. No credential is listed here; the Komga API key is a write-only secret, excluded from generated config backups and never returned by the settings queries.
 
 ```text
+Acquisition
+    archiveDefaultAcquisitionPolicy        default MANUAL; the policy a series applies while it has
+                                           no per-series override (AUTO / MANUAL / PAUSED)
+
 Storage
     archiveStagingPath                     local staging root (empty = unconfigured)
     archivePath                            mounted archive root (empty = unconfigured)

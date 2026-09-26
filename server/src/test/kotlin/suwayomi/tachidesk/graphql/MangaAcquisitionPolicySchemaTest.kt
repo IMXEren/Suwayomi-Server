@@ -6,6 +6,7 @@ import graphql.schema.GraphQLObjectType
 import graphql.schema.GraphQLTypeUtil
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
 import suwayomi.tachidesk.graphql.server.GraphQLSchemaProvider
@@ -36,11 +37,19 @@ class MangaAcquisitionPolicySchemaTest {
             "MangaAcquisitionPolicy",
             GraphQLTypeUtil.unwrapAll(mangaType.getFieldDefinition("acquisitionPolicy").type).name,
         )
+        assertTrue(
+            GraphQLTypeUtil.isNullable(mangaType.getFieldDefinition("acquisitionPolicyOverride").type),
+            "the per-series override is nullable because null inherits the global default",
+        )
 
         val updatePatch = schema.getType("UpdateMangaPatchInput") as GraphQLInputObjectType
         assertEquals(
             "MangaAcquisitionPolicy",
             GraphQLTypeUtil.unwrapAll(updatePatch.getFieldDefinition("acquisitionPolicy").type).name,
+        )
+        assertEquals(
+            "Boolean",
+            GraphQLTypeUtil.unwrapAll(updatePatch.getFieldDefinition("inheritAcquisitionPolicy").type).name,
         )
     }
 }

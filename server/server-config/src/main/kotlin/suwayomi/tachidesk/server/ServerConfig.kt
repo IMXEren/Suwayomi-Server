@@ -1226,6 +1226,18 @@ class ServerConfig(
                 "-1 keeps every accepted revision, 0 keeps only the active one",
     )
 
+    val archiveDefaultAcquisitionPolicy: MutableStateFlow<String> by StringSetting(
+        protoNumber = 138,
+        group = SettingGroup.ARCHIVAL,
+        privacySafe = true,
+        defaultValue = "MANUAL",
+        pattern = Regex("^(AUTO|MANUAL|PAUSED)$"),
+        requiresRestart = false,
+        description =
+            "Acquisition policy a series inherits while it has no per-series override; " +
+                "AUTO acquires and archives automatically, MANUAL requires approval, PAUSED is inert",
+    )
+
     val komgaBaseUrl: MutableStateFlow<String> by StringSetting(
         protoNumber = 105,
         group = SettingGroup.ARCHIVAL,

@@ -42,6 +42,8 @@ import suwayomi.tachidesk.manga.model.table.ChapterRevisionSweepScheduleTable
 import suwayomi.tachidesk.manga.model.table.ChapterRevisionSweepSessionTable
 import suwayomi.tachidesk.manga.model.table.ChapterTable
 import suwayomi.tachidesk.manga.model.table.MangaTable
+import suwayomi.tachidesk.manga.model.table.effectiveAcquisitionPolicy
+import suwayomi.tachidesk.manga.model.table.storedAcquisitionPolicyOverride
 import suwayomi.tachidesk.manga.model.table.toDataClass
 import suwayomi.tachidesk.server.serverConfig
 import java.time.Instant
@@ -1174,7 +1176,7 @@ object ChapterRevisionSweep {
                         url = it[MangaTable.url],
                         title = it[MangaTable.title],
                         sourceId = it[MangaTable.sourceReference],
-                        policy = MangaAcquisitionPolicy.valueOf(it[MangaTable.acquisitionPolicy]),
+                        policy = it.storedAcquisitionPolicyOverride().effectiveAcquisitionPolicy(),
                     )
                 }
         }

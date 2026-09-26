@@ -58,4 +58,6 @@ data class BackupManga(
     @ProtoNumber(9002) var acceptedRevisionRetention: Int? = null,
     // suwayomi: presence marker for 9002, so an explicit inherit/null is distinguishable from an old backup
     @ProtoNumber(9003) var acceptedRevisionRetentionPresent: Boolean = false,
+    // suwayomi: presence marker for 9001, so an explicit inherit/null is distinguishable from an old backup
+    @ProtoNumber(9004) var acquisitionPolicyPresent: Boolean = false,
 )

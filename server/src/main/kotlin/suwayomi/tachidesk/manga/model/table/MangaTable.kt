@@ -18,6 +18,7 @@ import suwayomi.tachidesk.manga.model.dataclass.toGenreList
 import suwayomi.tachidesk.manga.model.table.columns.jsonObject
 import suwayomi.tachidesk.manga.model.table.columns.truncatingVarchar
 import suwayomi.tachidesk.manga.model.table.columns.unlimitedVarchar
+import suwayomi.tachidesk.server.serverConfig
 
 object MangaTable : IntIdTable() {
     val url = varchar("url", 2048)
@@ -46,7 +47,9 @@ object MangaTable : IntIdTable() {
     val chaptersLastFetchedAt = long("chapters_last_fetched_at").default(0)
 
     val updateStrategy = varchar("update_strategy", 256).default(UpdateStrategy.ALWAYS_UPDATE.name)
-    val acquisitionPolicy = varchar("acquisition_policy", 256).default(MangaAcquisitionPolicy.MANUAL.name)
+
+    /** Per-series override; null inherits [suwayomi.tachidesk.server.ServerConfig.archiveDefaultAcquisitionPolicy]. */
+    val acquisitionPolicy = varchar("acquisition_policy", 256).nullable()
 
     /**
      * Per-series override of how many superseded accepted revisions to keep in addition to the
@@ -66,8 +69,27 @@ object MangaTable : IntIdTable() {
     val memo = jsonObject("memo")
 }
 
-fun MangaTable.toDataClass(mangaEntry: ResultRow) =
-    MangaDataClass(
+/**
+ * The per-series acquisition policy override exactly as stored; null means the series inherits the
+ * global default.
+ */
+fun ResultRow.storedAcquisitionPolicyOverride(): MangaAcquisitionPolicy? =
+    this[MangaTable.acquisitionPolicy]?.let { MangaAcquisitionPolicy.valueOf(it) }
+
+/**
+ * The acquisition policy actually applied to a series.
+ *
+ * An explicit per-series override - including MANUAL - always wins; a series without one inherits
+ * the configurable global default. This is the single place the stored override and the setting are
+ * combined.
+ */
+fun MangaAcquisitionPolicy?.effectiveAcquisitionPolicy(): MangaAcquisitionPolicy =
+    this ?: MangaAcquisitionPolicy.valueOf(serverConfig.archiveDefaultAcquisitionPolicy.value)
+
+fun MangaTable.toDataClass(mangaEntry: ResultRow): MangaDataClass {
+    val acquisitionPolicyOverride = mangaEntry.storedAcquisitionPolicyOverride()
+
+    return MangaDataClass(
         id = mangaEntry[this.id].value,
         sourceId = mangaEntry[sourceReference].toString(),
         url = mangaEntry[url],
@@ -86,12 +108,14 @@ fun MangaTable.toDataClass(mangaEntry: ResultRow) =
         lastFetchedAt = mangaEntry[lastFetchedAt],
         chaptersLastFetchedAt = mangaEntry[chaptersLastFetchedAt],
         updateStrategy = UpdateStrategy.valueOf(mangaEntry[updateStrategy]),
-        acquisitionPolicy = MangaAcquisitionPolicy.valueOf(mangaEntry[acquisitionPolicy]),
+        acquisitionPolicy = acquisitionPolicyOverride.effectiveAcquisitionPolicy(),
+        acquisitionPolicyOverride = acquisitionPolicyOverride,
         acceptedRevisionRetention = mangaEntry[acceptedRevisionRetention],
         lastModifiedAt = mangaEntry[lastModifiedAt],
         version = mangaEntry[version],
         memo = mangaEntry[memo],
     )
+}
 
 enum class MangaStatus(
     val value: Int,

@@ -49,7 +49,10 @@ data class MangaDataClass(
     val lastFetchedAt: Long? = 0,
     val chaptersLastFetchedAt: Long? = 0,
     val updateStrategy: UpdateStrategy = UpdateStrategy.ALWAYS_UPDATE,
+    /** the policy actually applied: the per-series override when set, the global default otherwise */
     val acquisitionPolicy: MangaAcquisitionPolicy = MangaAcquisitionPolicy.MANUAL,
+    /** the per-series override; null inherits the configurable global default */
+    val acquisitionPolicyOverride: MangaAcquisitionPolicy? = null,
     /** null inherits the global default, -1 is unlimited and >= 0 is an explicit count */
     val acceptedRevisionRetention: Int? = null,
     val freshData: Boolean = false,

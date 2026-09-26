@@ -57,6 +57,8 @@ import suwayomi.tachidesk.manga.model.table.ChapterRevisionSweepItemTable
 import suwayomi.tachidesk.manga.model.table.ChapterRevisionSweepSessionTable
 import suwayomi.tachidesk.manga.model.table.ChapterRevisionTable
 import suwayomi.tachidesk.manga.model.table.MangaTable
+import suwayomi.tachidesk.manga.model.table.effectiveAcquisitionPolicy
+import suwayomi.tachidesk.manga.model.table.storedAcquisitionPolicyOverride
 import suwayomi.tachidesk.manga.model.table.toDataClass
 import suwayomi.tachidesk.server.serverConfig
 import java.time.Instant
@@ -345,7 +347,7 @@ object ChapterRevision {
         return createCandidates(
             sourceId = mangaEntry[MangaTable.sourceReference],
             sourceMangaUrl = mangaEntry[MangaTable.url],
-            policy = MangaAcquisitionPolicy.valueOf(mangaEntry[MangaTable.acquisitionPolicy]),
+            policy = mangaEntry.storedAcquisitionPolicyOverride().effectiveAcquisitionPolicy(),
             chapters = chapters,
             now = now,
         )
@@ -366,7 +368,7 @@ object ChapterRevision {
         return createCandidateDiscoveries(
             sourceId = mangaEntry[MangaTable.sourceReference],
             sourceMangaUrl = mangaEntry[MangaTable.url],
-            policy = MangaAcquisitionPolicy.valueOf(mangaEntry[MangaTable.acquisitionPolicy]),
+            policy = mangaEntry.storedAcquisitionPolicyOverride().effectiveAcquisitionPolicy(),
             discoveries = discoveries,
             now = now,
         )
@@ -392,7 +394,7 @@ object ChapterRevision {
         return createCandidateDiscoveries(
             sourceId = mangaEntry[MangaTable.sourceReference],
             sourceMangaUrl = mangaEntry[MangaTable.url],
-            policy = MangaAcquisitionPolicy.valueOf(mangaEntry[MangaTable.acquisitionPolicy]),
+            policy = mangaEntry.storedAcquisitionPolicyOverride().effectiveAcquisitionPolicy(),
             discoveries =
                 chapters.map {
                     ChapterRevisionDiscovery(it, ChapterRevisionDiscoveryReason.BOOTSTRAP_IMPORT)

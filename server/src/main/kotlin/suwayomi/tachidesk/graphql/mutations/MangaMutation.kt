@@ -48,6 +48,8 @@ class MangaMutation {
     data class UpdateMangaPatch(
         val inLibrary: Boolean? = null,
         val acquisitionPolicy: MangaAcquisitionPolicy? = null,
+        /** true clears the per-series override so the series inherits the configurable global default */
+        val inheritAcquisitionPolicy: Boolean = false,
         /**
          * Per-series override of how many superseded accepted revisions to keep in addition to the
          * active one: -1 keeps every accepted revision, >= 0 keeps that many. Null leaves it
@@ -90,10 +92,14 @@ class MangaMutation {
         require(!(patch.inheritAcceptedRevisionRetention && patch.acceptedRevisionRetention != null)) {
             "acceptedRevisionRetention and inheritAcceptedRevisionRetention are mutually exclusive"
         }
+        require(!(patch.inheritAcquisitionPolicy && patch.acquisitionPolicy != null)) {
+            "acquisitionPolicy and inheritAcquisitionPolicy are mutually exclusive"
+        }
 
         transaction {
             if (patch.inLibrary != null ||
                 patch.acquisitionPolicy != null ||
+                patch.inheritAcquisitionPolicy ||
                 patch.acceptedRevisionRetention != null ||
                 patch.inheritAcceptedRevisionRetention
             ) {
@@ -105,6 +111,9 @@ class MangaMutation {
                     }
                     patch.acquisitionPolicy?.also {
                         update[acquisitionPolicy] = it.name
+                    }
+                    if (patch.inheritAcquisitionPolicy) {
+                        update[acquisitionPolicy] = null
                     }
                     patch.acceptedRevisionRetention?.also {
                         update[acceptedRevisionRetention] = it

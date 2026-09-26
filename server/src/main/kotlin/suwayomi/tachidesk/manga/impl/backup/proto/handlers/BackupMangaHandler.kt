@@ -88,6 +88,8 @@ object BackupMangaHandler {
                         initialized = mangaRow[MangaTable.initialized],
                         memo = Json.encodeToString(mangaRow[MangaTable.memo]).encodeToByteArray(),
                         acquisitionPolicy = mangaRow[MangaTable.acquisitionPolicy],
+                        // marks 9001 as authoritative so an explicit inherit/null survives a round trip
+                        acquisitionPolicyPresent = true,
                         acceptedRevisionRetention = mangaRow[MangaTable.acceptedRevisionRetention],
                         // marks 9002 as authoritative so an explicit inherit/null survives a round trip
                         acceptedRevisionRetentionPresent = true,
@@ -271,8 +273,13 @@ object BackupMangaHandler {
         val keepLocalManga =
             syncMode == SyncRestoreMode.ADOPT && dbManga != null && manga.version < dbManga[MangaTable.version]
 
-        // null when the backup predates the field or carries an unknown value, in which case the stored policy is kept
+        // The acquisition policy is only authoritative with its presence marker: without it the value
+        // is a legacy field, not an explicit choice, so an absent or unknown value must keep the stored
+        // override. With the marker, null clears the override back to inheritance and a non-null value
+        // must be a known policy; an unknown value from a newer/corrupted client is ignored.
         val restoredAcquisitionPolicy = parseAcquisitionPolicy(manga.acquisitionPolicy)
+        val applyAcquisitionPolicy =
+            manga.acquisitionPolicyPresent && (manga.acquisitionPolicy == null || restoredAcquisitionPolicy != null)
         // The retention field is only authoritative when the backup carries the presence marker: without
         // it the value is the proto3 default, so an old backup - or a peer that dropped the field - is
         // indistinguishable from an intentional override and must not touch the stored one. With the
@@ -318,7 +325,11 @@ object BackupMangaHandler {
                                 it[version] = manga.version
                                 it[isSyncing] = syncMode.isSync
                                 it[memo] = Json.decodeFromString<JsonObject>(manga.memo.decodeToString())
-                                restoredAcquisitionPolicy?.let { policy -> it[acquisitionPolicy] = policy.name }
+                                // a new series has no stored override, so an explicit or legacy known
+                                // policy is preserved and an absent one leaves the series inheriting
+                                if (restoredAcquisitionPolicy != null) {
+                                    it[acquisitionPolicy] = restoredAcquisitionPolicy.name
+                                }
                                 if (applyAcceptedRevisionRetention) {
                                     it[acceptedRevisionRetention] = restoredAcceptedRevisionRetention
                                 }
@@ -359,8 +370,11 @@ object BackupMangaHandler {
                             }
                             it[isSyncing] = syncMode.isSync
                             it[memo] = Json.decodeFromString<JsonObject>(manga.memo.decodeToString())
-                            // an old backup without the field must not wipe the stored policy
-                            restoredAcquisitionPolicy?.let { policy -> it[acquisitionPolicy] = policy.name }
+                            // only a backup that marks the field authoritative may change the stored
+                            // override; a legacy backup with a stale non-null value must leave it alone
+                            if (applyAcquisitionPolicy) {
+                                it[acquisitionPolicy] = restoredAcquisitionPolicy?.name
+                            }
                             // an old backup without the presence marker must not wipe the stored override
                             if (applyAcceptedRevisionRetention) {
                                 it[acceptedRevisionRetention] = restoredAcceptedRevisionRetention

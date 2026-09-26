@@ -23,6 +23,8 @@ import suwayomi.tachidesk.manga.model.dataclass.MangaDataClass
 import suwayomi.tachidesk.manga.model.dataclass.toGenreList
 import suwayomi.tachidesk.manga.model.table.MangaStatus
 import suwayomi.tachidesk.manga.model.table.MangaTable
+import suwayomi.tachidesk.manga.model.table.effectiveAcquisitionPolicy
+import suwayomi.tachidesk.manga.model.table.storedAcquisitionPolicyOverride
 import suwayomi.tachidesk.server.serverConfig
 import java.time.Instant
 import java.util.concurrent.CompletableFuture
@@ -43,7 +45,10 @@ class MangaType(
     val inLibrary: Boolean,
     val inLibraryAt: Long,
     val updateStrategy: UpdateStrategy,
+    /** the policy actually applied: the per-series override when set, the global default otherwise */
     val acquisitionPolicy: MangaAcquisitionPolicy,
+    /** the per-series override; null inherits the configurable global default */
+    val acquisitionPolicyOverride: MangaAcquisitionPolicy?,
     /**
      * Per-series retention override of superseded accepted revisions: null inherits the global
      * default, -1 keeps every accepted revision and >= 0 keeps that many in addition to the active
@@ -103,7 +108,8 @@ class MangaType(
         row[MangaTable.inLibrary],
         row[MangaTable.inLibraryAt],
         UpdateStrategy.valueOf(row[MangaTable.updateStrategy]),
-        MangaAcquisitionPolicy.valueOf(row[MangaTable.acquisitionPolicy]),
+        row.storedAcquisitionPolicyOverride().effectiveAcquisitionPolicy(),
+        row.storedAcquisitionPolicyOverride(),
         row[MangaTable.acceptedRevisionRetention],
         row[MangaTable.acceptedRevisionRetention] ?: serverConfig.acceptedRevisionRetention.value,
         row[MangaTable.realUrl],
@@ -128,6 +134,7 @@ class MangaType(
         dataClass.inLibraryAt,
         dataClass.updateStrategy,
         dataClass.acquisitionPolicy,
+        dataClass.acquisitionPolicyOverride,
         dataClass.acceptedRevisionRetention,
         dataClass.acceptedRevisionRetention ?: serverConfig.acceptedRevisionRetention.value,
         dataClass.realUrl,

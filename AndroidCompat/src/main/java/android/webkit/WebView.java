@@ -95,9 +95,26 @@ public class WebView extends AbsoluteLayout
     // set in the WebView constructor.
     private static volatile boolean sEnforceThreadChecking = false;
     private static CallableArgument<WebView, WebViewProvider> mProviderFactory;
+    private static boolean sDocumentStartScriptSupported;
+    private static final Object sFactory = new WebViewFactory();
+
+    private static final class WebViewFactory {}
+
+    public static Object getFactory() {
+        return sFactory;
+    }
 
     public static void setProviderFactory(CallableArgument<WebView, WebViewProvider> factory) {
+        setProviderFactory(factory, false);
+    }
+
+    public static void setProviderFactory(CallableArgument<WebView, WebViewProvider> factory, boolean documentStartScriptSupported) {
         mProviderFactory = factory;
+        sDocumentStartScriptSupported = documentStartScriptSupported;
+    }
+
+    public static boolean isDocumentStartScriptSupported() {
+        return sDocumentStartScriptSupported;
     }
 
     public class WebViewTransport {
@@ -875,7 +892,7 @@ public class WebView extends AbsoluteLayout
 
     @NonNull
     public static ClassLoader getWebViewClassLoader() {
-        throw new RuntimeException("Stub!");
+        return WebView.class.getClassLoader();
     }
 
     @NonNull
@@ -1050,6 +1067,11 @@ public class WebView extends AbsoluteLayout
     @Override
     public boolean onHoverEvent(MotionEvent event) {
         return mProvider.getViewDelegate().onHoverEvent(event);
+    }
+
+    @Override
+    public boolean dispatchTouchEvent(MotionEvent event) {
+        return onTouchEvent(event);
     }
 
     @Override

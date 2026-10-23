@@ -41,6 +41,11 @@ dependencies {
     implementation(libs.bundles.okhttp)
     implementation(libs.okio)
 
+    // Prowl-backed extension WebView: CDP client and its Ktor WebSocket transport.
+    implementation(libs.chrome.devtools.kotlin)
+    implementation(libs.ktor.client.cio)
+    implementation(libs.ktor.client.websockets)
+
     // Javalin api
     implementation(libs.bundles.javalin)
     implementation(libs.bundles.jackson)
@@ -89,6 +94,8 @@ dependencies {
 
     // AndroidCompat
     implementation(projects.androidCompat)
+    compileOnly(libs.android.stubs)
+    testImplementation(libs.android.stubs)
     implementation(projects.androidCompat.config)
 
     // i18n

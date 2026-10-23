@@ -583,10 +583,10 @@ object CEFManager {
 /**
  * Why the embedded browser must not be initialized, or null when it should be.
  *
- * Both settings are read once, at startup: the external provider serves the WebView itself, so
- * initializing CEF as well would hold a second browser in memory for nothing, which is most of
- * what the app container's footprint is otherwise made of. A setting that changes after startup
- * therefore needs a restart, which the message says.
+ * Both settings are read once, at startup. When the CDP adapter is configured, extension WebViews
+ * use Prowl's browser and starting CEF as well would waste the memory held by a second browser.
+ * Without CDP, extensions still need CEF even when the user-facing WebView is external. Changing
+ * this choice after startup requires a restart.
  *
  * The settings are parameters so that the decision can be exercised without loading CEF, which is
  * the thing being decided about.
@@ -594,13 +594,10 @@ object CEFManager {
 internal fun embeddedBrowserSkipReason(
     kcefEnabled: Boolean = serverConfig.kcefEnabled.value,
     provider: WebViewProvider = serverConfig.webViewProvider.value,
+    cdpConfigured: Boolean = System.getenv("WEB_VIEW_CDP_TOKEN_FILE") != null,
 ): String? =
     when {
         !kcefEnabled -> "CEF is disabled"
-        provider != WebViewProvider.CEF -> externalProviderSkipReason(provider)
+        provider == WebViewProvider.PROWL_VNC && cdpConfigured -> "CEF is not initialized; extension WebViews use Prowl CDP"
         else -> null
     }
-
-private fun externalProviderSkipReason(provider: WebViewProvider): String =
-    "CEF is not initialized because webViewProvider is $provider and the WebView uses the " +
-        "external browser; restart after switching back to CEF"

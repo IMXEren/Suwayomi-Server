@@ -18,6 +18,8 @@ ktlint = "1.8.0"
 koin = "4.2.2"
 moko = "0.26.4"
 jcef = "144.0.15-g72717cf-chromium-144.0.7559.172-api-1.21-262-b37"
+chrome-devtools = "8.3.0-1589152"
+ktor = "3.3.3"
 
 [libraries]
 # Kotlin
@@ -161,6 +163,9 @@ cronUtils = "com.cronutils:cron-utils:9.2.1"
 
 # Webview
 jcef = { module = "org.jetbrains.intellij.deps.jcef:jcef", version.ref = "jcef" }
+chrome-devtools-kotlin = { module = "org.hildan.chrome:chrome-devtools-kotlin", version.ref = "chrome-devtools" }
+ktor-client-cio = { module = "io.ktor:ktor-client-cio", version.ref = "ktor" }
+ktor-client-websockets = { module = "io.ktor:ktor-client-websockets", version.ref = "ktor" }
 
 # User
 jwt = "com.auth0:java-jwt:4.6.0"

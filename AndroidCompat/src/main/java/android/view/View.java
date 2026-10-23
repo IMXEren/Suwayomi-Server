@@ -87,6 +87,7 @@ import android.text.TextUtils;
 import android.util.ArraySet;
 import android.util.AttributeSet;
 import android.util.DisplayMetrics;
+import xyz.nulldev.androidcompat.webkit.WebViewResources;
 import android.util.FloatProperty;
 import android.util.LayoutDirection;
 import android.util.Log;
@@ -4349,8 +4350,20 @@ public class View implements Drawable.Callback, KeyEvent.Callback,
     protected void onFinishInflate() {
     }
 
+    private volatile WebViewResources webViewResources;
+
     public Resources getResources() {
-        throw new RuntimeException("Stub!");
+        WebViewResources resources = webViewResources;
+        if (resources == null) {
+            synchronized (this) {
+                resources = webViewResources;
+                if (resources == null) {
+                    resources = WebViewResources.create();
+                    webViewResources = resources;
+                }
+            }
+        }
+        return resources;
     }
 
     @Override

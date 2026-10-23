@@ -8,6 +8,7 @@ package suwayomi.tachidesk.server
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import android.os.Looper
+import android.webkit.WebView
 import ch.qos.logback.classic.Level
 import com.typesafe.config.ConfigRenderOptions
 import dorkbox.updates.Updates
@@ -32,9 +33,11 @@ import org.cef.network.CefCookieManager
 import org.koin.core.context.startKoin
 import org.koin.core.module.Module
 import org.koin.dsl.module
+import suwayomi.tachidesk.global.impl.CdpWebViewProvider
 import suwayomi.tachidesk.global.impl.KcefWebView.Companion.toCefCookie
 import suwayomi.tachidesk.global.impl.sync.SyncManager
 import suwayomi.tachidesk.graphql.types.DatabaseType
+import suwayomi.tachidesk.graphql.types.WebViewProvider
 import suwayomi.tachidesk.i18n.LocalizationHelper
 import suwayomi.tachidesk.manga.impl.ArchiveBootstrapExecutor
 import suwayomi.tachidesk.manga.impl.ChapterRevisionAcquisitionExecutor
@@ -288,6 +291,9 @@ fun applicationSetup() {
 
     // Load Android compatibility dependencies
     AndroidCompatInitializer().init()
+    if (serverConfig.webViewProvider.value == WebViewProvider.PROWL_VNC && System.getenv("WEB_VIEW_CDP_TOKEN_FILE") != null) {
+        WebView.setProviderFactory({ view -> CdpWebViewProvider.create(view) }, true)
+    }
     // start app
     androidCompat.startApp(app)
 

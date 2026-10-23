@@ -1051,7 +1051,7 @@ class ServerConfig(
             return@BooleanSetting null
         },
         toValidValue = { !Platform.current.os.isMacOS && it },
-        description = "Enable the WebView via CEF (Chromium) - Not supported on MacOS",
+        description = "Enable CEF for the embedded WebView and as a fallback for extension WebViews - Not supported on MacOS",
     )
 
     val syncYomiEnabled: MutableStateFlow<Boolean> by BooleanSetting(
@@ -1651,8 +1651,8 @@ class ServerConfig(
         enumClass = WebViewProvider::class,
         typeInfo = SettingsRegistry.PartialTypeInfo(imports = listOf("suwayomi.tachidesk.graphql.types.WebViewProvider")),
         description =
-            "Which browser backs the WebView: the one embedded in the server, or one running in " +
-                "the external browser service and shown through that service's web VNC endpoint",
+            "Which browser backs the user-facing WebView: the one embedded in the server, or one running in " +
+                "the external browser service and shown through web VNC. Extension WebViews use CEF or a configured Prowl CDP connection",
     )
 
     val webViewVncUrl: MutableStateFlow<String> by StringSetting(

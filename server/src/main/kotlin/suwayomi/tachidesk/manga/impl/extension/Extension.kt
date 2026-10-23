@@ -770,7 +770,7 @@ object Extension {
 
         val result = installExtension(pkgName, true)
 
-        ExtensionsList.updateMap.remove(pkgName)
+        ExtensionsList.updateMap.remove(pkgName, targetExtension)
 
         return result
     }

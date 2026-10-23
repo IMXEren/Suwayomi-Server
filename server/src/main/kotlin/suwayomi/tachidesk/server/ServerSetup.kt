@@ -53,6 +53,7 @@ import suwayomi.tachidesk.manga.impl.backup.proto.BackupRestoreExecutor
 import suwayomi.tachidesk.manga.impl.backup.proto.ProtoBackupExport
 import suwayomi.tachidesk.manga.impl.download.DownloadManager
 import suwayomi.tachidesk.manga.impl.extension.Extension
+import suwayomi.tachidesk.manga.impl.extension.ExtensionAutoUpdater
 import suwayomi.tachidesk.manga.impl.extension.ExtensionStoreService
 import suwayomi.tachidesk.manga.impl.update.IUpdater
 import suwayomi.tachidesk.manga.impl.update.Updater
@@ -538,6 +539,8 @@ fun applicationSetup() {
         },
         ignoreInitialValue = false,
     )
+
+    ExtensionAutoUpdater.start()
 
     serverConfig.subscribeTo(
         serverConfig.acceptedRevisionRetention,

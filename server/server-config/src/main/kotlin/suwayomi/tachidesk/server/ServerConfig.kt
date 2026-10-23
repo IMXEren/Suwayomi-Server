@@ -1148,6 +1148,14 @@ class ServerConfig(
         description = "List of extension store index URLs",
     )
 
+    val autoUpdateExtensions: MutableStateFlow<Boolean> by BooleanSetting(
+        protoNumber = 139,
+        group = SettingGroup.EXTENSION,
+        privacySafe = true,
+        defaultValue = false,
+        description = "Automatically update installed extensions from configured stores every 24 hours",
+    )
+
     val archiveStagingPath: MutableStateFlow<String> by PathSetting(
         protoNumber = 98,
         group = SettingGroup.ARCHIVAL,

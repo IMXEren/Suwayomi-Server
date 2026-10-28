@@ -8,8 +8,11 @@ import org.jetbrains.exposed.v1.core.LikePattern
 import org.jetbrains.exposed.v1.core.Op
 import org.jetbrains.exposed.v1.core.QueryBuilder
 import org.jetbrains.exposed.v1.core.and
+import org.jetbrains.exposed.v1.core.andIfNotNull
+import org.jetbrains.exposed.v1.core.coalesce
 import org.jetbrains.exposed.v1.core.dao.id.EntityID
 import org.jetbrains.exposed.v1.core.eq
+import org.jetbrains.exposed.v1.core.exists
 import org.jetbrains.exposed.v1.core.greater
 import org.jetbrains.exposed.v1.core.greaterEq
 import org.jetbrains.exposed.v1.core.inList
@@ -20,6 +23,7 @@ import org.jetbrains.exposed.v1.core.lessEq
 import org.jetbrains.exposed.v1.core.like
 import org.jetbrains.exposed.v1.core.neq
 import org.jetbrains.exposed.v1.core.not
+import org.jetbrains.exposed.v1.core.notExists
 import org.jetbrains.exposed.v1.core.notInList
 import org.jetbrains.exposed.v1.core.notLike
 import org.jetbrains.exposed.v1.core.or
@@ -29,6 +33,7 @@ import org.jetbrains.exposed.v1.core.wrap
 import org.jetbrains.exposed.v1.jdbc.Query
 import org.jetbrains.exposed.v1.jdbc.andWhere
 import suwayomi.tachidesk.manga.model.dataclass.ContentWarning
+import suwayomi.tachidesk.server.user.UserPermission
 
 class ILikeEscapeOp(
     expr1: Expression<*>,
@@ -137,26 +142,29 @@ class DistinctFromOp(
     }
 }
 
-interface HasGetOp {
-    fun getOp(): Op<Boolean>?
+interface HasGetOp<T> {
+    fun getOp(value: T): Op<Boolean>?
 }
 
-fun Query.applyOps(vararg ops: HasGetOp?): Query {
-    ops.mapNotNull { it?.getOp() }.forEach {
+fun <T> Query.applyOps(
+    value: T,
+    vararg ops: HasGetOp<T>?,
+): Query {
+    ops.mapNotNull { it?.getOp(value) }.forEach {
         andWhere { it }
     }
 
     return this
 }
 
-interface Filter<T : Filter<T>> : HasGetOp {
+interface Filter<T : Filter<T, V>, V> : HasGetOp<V> {
     val and: List<T>?
     val or: List<T>?
     val not: T?
 
-    fun getOpList(): List<Op<Boolean>>
+    fun getOpList(value: V): List<Op<Boolean>>
 
-    override fun getOp(): Op<Boolean>? {
+    override fun getOp(value: V): Op<Boolean>? {
         var op: Op<Boolean>? = null
 
         fun newOp(
@@ -178,17 +186,17 @@ interface Filter<T : Filter<T>> : HasGetOp {
         fun orOp(orOp: Op<Boolean>?) {
             newOp(orOp, Op<Boolean>::or)
         }
-        getOpList().forEach {
+        getOpList(value).forEach {
             andOp(it)
         }
         and?.forEach {
-            andOp(it.getOp())
+            andOp(it.getOp(value))
         }
         or?.forEach {
-            orOp(it.getOp())
+            orOp(it.getOp(value))
         }
         if (not != null) {
-            andOp(not!!.getOp()?.let(::not))
+            andOp(not!!.getOp(value)?.let(::not))
         }
         return op
     }
@@ -349,6 +357,20 @@ data class ContentWarningFilter(
     override val greaterThan: ContentWarning? = null,
     override val greaterThanOrEqualTo: ContentWarning? = null,
 ) : ComparableScalarFilter<ContentWarning>
+
+data class PermissionsFilter(
+    override val isNull: Boolean? = null,
+    override val equalTo: UserPermission? = null,
+    override val notEqualTo: UserPermission? = null,
+    override val notEqualToAll: List<UserPermission>? = null,
+    override val notEqualToAny: List<UserPermission>? = null,
+    override val distinctFrom: UserPermission? = null,
+    override val distinctFromAll: List<UserPermission>? = null,
+    override val distinctFromAny: List<UserPermission>? = null,
+    override val notDistinctFrom: UserPermission? = null,
+    override val `in`: List<UserPermission>? = null,
+    override val notIn: List<UserPermission>? = null,
+) : ScalarFilter<UserPermission>
 
 data class StringFilter(
     override val isNull: Boolean? = null,
@@ -528,6 +550,11 @@ fun <T : String, S : T?> andFilterWithCompareString(
 class OpAnd(
     var op: Op<Boolean>? = null,
 ) {
+    fun andWhere(expr: Op<Boolean>?) {
+        expr ?: return
+        op = if (op == null) expr else (op!! and expr)
+    }
+
     fun <T> andWhere(
         value: T?,
         andPart: (T & Any) -> Op<Boolean>,
@@ -601,7 +628,7 @@ class OpAnd(
 
     fun <T> eq(
         value: T?,
-        column: Column<T>,
+        column: ExpressionWithColumnType<T>,
     ) = andWhere(value) { column eq it }
 
     fun <T : Comparable<T>> eq(
@@ -612,7 +639,7 @@ class OpAnd(
 
 @Suppress("UNCHECKED_CAST")
 fun <T : Comparable<T>, S : T?> andFilterWithCompare(
-    column: Column<S>,
+    column: ExpressionWithColumnType<S>,
     filter: ComparableScalarFilter<T>?,
 ): Op<Boolean>? {
     filter ?: return null
@@ -668,6 +695,30 @@ fun <T : Enum<T>> andFilterWithCompareEnum(
     return opAnd.op
 }
 
+@Suppress("UNCHECKED_CAST")
+fun <T : Enum<T>> andFilterEnum(
+    column: Column<String>,
+    filter: ScalarFilter<T>?,
+): Op<Boolean>? {
+    filter ?: return null
+    val opAnd = OpAnd()
+
+    opAnd.andWhere(filter.isNull) { if (it) column.isNull() else column.isNotNull() }
+
+    opAnd.andWhere(filter.equalTo) { column eq it.name }
+    opAnd.andNotWhere(filter.notEqualTo, filter.notEqualToAll, filter.notEqualToAny) { column neq it.name }
+    opAnd.andWhere(filter.distinctFrom, filter.distinctFromAll, filter.distinctFromAny) { DistinctFromOp.distinctFrom(column, it.name) }
+    opAnd.andWhere(filter.notDistinctFrom) { DistinctFromOp.notDistinctFrom(column, it.name) }
+    if (!filter.`in`.isNullOrEmpty()) {
+        opAnd.andWhere(filter.`in`) { column inList it.map { it.name } }
+    }
+    if (!filter.notIn.isNullOrEmpty()) {
+        opAnd.andWhere(filter.notIn) { column notInList it.map { it.name } }
+    }
+
+    return opAnd.op
+}
+
 fun <T : Comparable<T>> andFilterWithCompareEntity(
     column: Column<EntityID<T>>,
     filter: ComparableScalarFilter<T>?,
@@ -694,4 +745,28 @@ fun <T : Comparable<T>> andFilterWithCompareEntity(
     }
 
     return opAnd.op
+}
+
+fun <T : Any> coalesceDefault(
+    column: Column<T>,
+    default: T,
+): ExpressionWithColumnType<T> = coalesce(column, column.wrap(default))
+
+fun <T : HasGetOp<V>, V> andExistsWhere(
+    userId: V,
+    query: Query,
+    correlation: Op<Boolean>,
+    filter: T?,
+    not: Boolean = false,
+): Op<Boolean>? {
+    filter ?: return null
+
+    val filterOp = filter.getOp(userId)
+
+    val subQuery =
+        query.andWhere {
+            correlation andIfNotNull (filterOp)
+        }
+
+    return if (not) notExists(subQuery) else exists(subQuery)
 }

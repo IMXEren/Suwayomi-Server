@@ -7,7 +7,7 @@ package suwayomi.tachidesk.graphql.queries
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import suwayomi.tachidesk.graphql.directives.RequireAuth
+import suwayomi.tachidesk.graphql.directives.RequireArchiveOwner
 import suwayomi.tachidesk.graphql.types.KomgaRescanStatusType
 import suwayomi.tachidesk.manga.impl.KomgaRescanExecutor
 import suwayomi.tachidesk.manga.impl.KomgaScanIntent
@@ -20,7 +20,7 @@ class KomgaQuery {
      * false and the reason - because that is exactly when an operator needs to know why nothing is
      * being scanned.
      */
-    @RequireAuth
+    @RequireArchiveOwner
     fun komgaRescanStatus(): KomgaRescanStatusType =
         KomgaRescanStatusType.of(
             configuration = KomgaRescanExecutor.configuration(),

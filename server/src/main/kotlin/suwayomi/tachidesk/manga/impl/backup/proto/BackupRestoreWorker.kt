@@ -36,6 +36,7 @@ import suwayomi.tachidesk.manga.model.dataclass.BackupRestorePhase
 import suwayomi.tachidesk.manga.model.table.CategoryTable
 import suwayomi.tachidesk.manga.model.table.MangaTable
 import suwayomi.tachidesk.server.ApplicationDirs
+import suwayomi.tachidesk.server.user.ARCHIVE_OWNER_ID
 import uy.kohesive.injekt.injectLazy
 import java.io.File
 import java.time.Instant
@@ -61,10 +62,10 @@ class BackupRestoreProcessor(
         ProtoBackupImport.parser.decodeFromByteArray(Backup.serializer(), source.readByteArray())
     },
     private val validate: (Backup) -> ValidationResult = { ProtoBackupValidator.validate(it) },
-    private val restoreSettings: (Backup) -> Unit = { BackupSettingsHandler.restore(it.serverSettings) },
-    private val restoreCategories: (Backup) -> Map<Int, Int> = { BackupCategoryHandler.restore(it.backupCategories) },
+    private val restoreSettings: (Backup) -> Unit = { BackupSettingsHandler.restore(it.serverSettings, ARCHIVE_OWNER_ID) },
+    private val restoreCategories: (Backup) -> Map<Int, Int> = { BackupCategoryHandler.restore(ARCHIVE_OWNER_ID, it.backupCategories) },
     private val restoreMeta: (Backup) -> Unit = { backup ->
-        BackupGlobalMetaHandler.restore(backup.meta)
+        BackupGlobalMetaHandler.restore(ARCHIVE_OWNER_ID, backup.meta)
         BackupSourceHandler.restore(backup.backupSources)
     },
     private val restoreSeries: (
@@ -73,7 +74,7 @@ class BackupRestoreProcessor(
         Map<Long, String>,
         BackupFlags,
     ) -> Boolean = { manga, categoryMapping, sourceMapping, flags ->
-        BackupMangaHandler.restore(manga, categoryMapping, sourceMapping, flags)
+        BackupMangaHandler.restore(ARCHIVE_OWNER_ID, manga, categoryMapping, sourceMapping, flags)
     },
     private val startBootstrap: (ArchiveBootstrap.StartRequest) -> ArchiveBootstrap.StartOutcome = { request ->
         ArchiveBootstrap.start(request)

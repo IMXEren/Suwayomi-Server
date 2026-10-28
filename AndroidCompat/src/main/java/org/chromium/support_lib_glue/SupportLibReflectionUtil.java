@@ -1,41 +1,24 @@
+// Copyright 2018 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
 package org.chromium.support_lib_glue;
 
-import android.webkit.WebView;
+import org.chromium.support_lib_boundary.util.BoundaryInterfaceReflectionUtil;
+
 import java.lang.reflect.InvocationHandler;
-import java.lang.reflect.Method;
-import xyz.nulldev.androidcompat.webkit.DocumentStartScriptProvider;
 
-public final class SupportLibReflectionUtil {
-    private SupportLibReflectionUtil() {}
-
+/** Starting point for fetching WebView implementation. */
+// @UsedByReflection("WebView Support Library")
+public class SupportLibReflectionUtil {
+    /**
+     * Entry point used by the WebView Support Library to gain access to the functionality in the
+     * support library glue.
+     * Changing the signature of this method will break existing WebView Support Library versions!
+     */
+    // @UsedByReflection("WebView Support Library")
     public static InvocationHandler createWebViewProviderFactory() {
-        return (proxy, method, args) -> {
-            switch (method.getName()) {
-                case "getSupportedFeatures":
-                    return WebView.isDocumentStartScriptSupported()
-                        ? new String[] {"DOCUMENT_START_SCRIPT:1"}
-                        : new String[0];
-                case "createWebView":
-                    WebView view = (WebView) args[0];
-                    return (InvocationHandler) (providerProxy, providerMethod, providerArgs) -> {
-                        if (providerMethod.getName().equals("addDocumentStartJavaScript")) {
-                            return ((DocumentStartScriptProvider) view.getWebViewProvider())
-                                .addDocumentStartJavaScript((String) providerArgs[0], (String[]) providerArgs[1]);
-                        }
-                        return objectMethod(providerProxy, providerMethod, providerArgs);
-                    };
-                default:
-                    return objectMethod(proxy, method, args);
-            }
-        };
-    }
-
-    private static Object objectMethod(Object proxy, Method method, Object[] args) {
-        switch (method.getName()) {
-            case "equals": return proxy == args[0];
-            case "hashCode": return System.identityHashCode(proxy);
-            case "toString": return "AndroidCompatWebViewBoundary";
-            default: throw new UnsupportedOperationException(method.getName());
-        }
+        return BoundaryInterfaceReflectionUtil.createInvocationHandlerFor(
+                new SupportLibWebViewChromiumFactory());
     }
 }

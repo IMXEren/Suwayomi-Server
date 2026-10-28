@@ -15,7 +15,7 @@ import org.jetbrains.exposed.v1.core.less
 import org.jetbrains.exposed.v1.jdbc.andWhere
 import org.jetbrains.exposed.v1.jdbc.selectAll
 import org.jetbrains.exposed.v1.jdbc.transactions.transaction
-import suwayomi.tachidesk.graphql.directives.RequireAuth
+import suwayomi.tachidesk.graphql.directives.RequireArchiveOwner
 import suwayomi.tachidesk.graphql.server.primitives.Cursor
 import suwayomi.tachidesk.graphql.server.primitives.Order
 import suwayomi.tachidesk.graphql.server.primitives.OrderBy
@@ -117,7 +117,7 @@ class ChapterRevisionSweepQuery {
     ) : Order<ChapterRevisionSweepSessionOrderBy>
 
     /** All runs of this server, newest first by default. */
-    @RequireAuth
+    @RequireArchiveOwner
     fun chapterRevisionSweepSessions(
         state: ChapterRevisionSweepSessionState? = null,
         order: List<ChapterRevisionSweepSessionOrder>? = null,
@@ -188,26 +188,26 @@ class ChapterRevisionSweepQuery {
         )
     }
 
-    @RequireAuth
+    @RequireArchiveOwner
     fun chapterRevisionSweepSession(id: Int): ChapterRevisionSweepSessionType? =
         ChapterRevisionSweep.getSession(id)?.let { ChapterRevisionSweepSessionType(it) }
 
     /** The run that is still running or paused; there is at most one. */
-    @RequireAuth
+    @RequireArchiveOwner
     fun chapterRevisionSweepActiveSession(): ChapterRevisionSweepSessionType? =
         ChapterRevisionSweep.getActiveSession()?.let { ChapterRevisionSweepSessionType(it) }
 
-    @RequireAuth
+    @RequireArchiveOwner
     fun chapterRevisionSweepLatestSession(): ChapterRevisionSweepSessionType? =
         ChapterRevisionSweep.getLatestSession()?.let { ChapterRevisionSweepSessionType(it) }
 
     /** When the next automatic sweep is due, or null while no schedule exists yet. */
-    @RequireAuth
+    @RequireArchiveOwner
     fun chapterRevisionSweepSchedule(): ChapterRevisionSweepScheduleType? =
         ChapterRevisionSweep.getSchedule()?.let { ChapterRevisionSweepScheduleType(it) }
 
     /** The chapters of one run, in the order the worker will visit them. */
-    @RequireAuth
+    @RequireArchiveOwner
     fun chapterRevisionSweepItems(
         sessionId: Int,
         state: ChapterRevisionSweepItemState? = null,
@@ -274,7 +274,7 @@ class ChapterRevisionSweepQuery {
         )
     }
 
-    @RequireAuth
+    @RequireArchiveOwner
     fun chapterRevisionSweepProgress(sessionId: Int): ChapterRevisionSweepProgressType =
         ChapterRevisionSweepProgressType(ChapterRevisionSweep.progress(sessionId))
 }

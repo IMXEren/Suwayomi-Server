@@ -114,6 +114,7 @@ dependencies {
 
     implementation(libs.cronUtils)
 
+    implementation(libs.bcrypt)
     implementation(libs.jwt)
 
     compileOnly(libs.kte)
@@ -213,6 +214,24 @@ tasks {
             showStandardStreams = true
             events("passed", "skipped", "failed")
         }
+        // Set before any test runs, a test may load the config before ApplicationTest sets it
+        systemProperty(
+            "suwayomi.tachidesk.config.server.rootDir",
+            layout.buildDirectory
+                .dir("tmp/TestDesk")
+                .get()
+                .asFile.absolutePath,
+        )
+        listOf(
+            "testDatabaseType" to "databaseType",
+            "testDatabaseUrl" to "databaseUrl",
+            "testDatabaseUsername" to "databaseUsername",
+            "testDatabasePassword" to "databasePassword",
+        ).forEach { (gradleProp, configProp) ->
+            project.findProperty(gradleProp)?.let {
+                systemProperty("suwayomi.tachidesk.config.server.$configProp", it)
+            }
+        }
     }
 
     withType<KotlinJvmCompile> {
@@ -267,10 +286,8 @@ tasks {
         }
     }
 
-    // the main source set contains generated sources written by both the settings generator
-    // (build/generated/src/main/kotlin) and the JTE plugin, so both ktlint main source set tasks
-    // must depend on the generators instead of only being ordered after them; a plain mustRunAfter
-    // does not schedule the generators and lets ktlint read a half-written source directory
+    // The main source set contains generated settings and JTE sources; both ktlint tasks
+    // must schedule the generators rather than merely running after them.
     listOf(runKtlintCheckOverMainSourceSet, runKtlintFormatOverMainSourceSet).forEach { ktlintTask ->
         ktlintTask {
             dependsOn(generateJte, ":server:server-config-generate:generateSettings")

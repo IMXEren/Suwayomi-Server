@@ -21,6 +21,7 @@ import kotlinx.coroutines.sync.withLock
 import okio.buffer
 import okio.gzip
 import okio.source
+import org.jetbrains.exposed.v1.core.and
 import org.jetbrains.exposed.v1.core.eq
 import org.jetbrains.exposed.v1.jdbc.transactions.transaction
 import org.jetbrains.exposed.v1.jdbc.update
@@ -33,20 +34,25 @@ import suwayomi.tachidesk.manga.impl.backup.proto.handlers.BackupGlobalMetaHandl
 import suwayomi.tachidesk.manga.impl.backup.proto.handlers.BackupMangaHandler
 import suwayomi.tachidesk.manga.impl.backup.proto.handlers.BackupSettingsHandler
 import suwayomi.tachidesk.manga.impl.backup.proto.handlers.BackupSourceHandler
+import suwayomi.tachidesk.manga.impl.backup.proto.handlers.BackupUserSettingsHandler
 import suwayomi.tachidesk.manga.impl.backup.proto.models.Backup
 import suwayomi.tachidesk.manga.model.dataclass.BackupRestoreJobDataClass
 import suwayomi.tachidesk.manga.model.dataclass.BackupRestoreJobState
 import suwayomi.tachidesk.manga.model.dataclass.BackupRestorePhase
 import suwayomi.tachidesk.manga.model.table.CategoryTable
-import suwayomi.tachidesk.manga.model.table.ChapterTable
-import suwayomi.tachidesk.manga.model.table.MangaTable
+import suwayomi.tachidesk.manga.model.table.ChapterUserTable
+import suwayomi.tachidesk.manga.model.table.MangaUserTable
 import suwayomi.tachidesk.server.ApplicationDirs
+import suwayomi.tachidesk.server.user.ARCHIVE_OWNER_ID
+import suwayomi.tachidesk.server.user.UserPermission
+import suwayomi.tachidesk.server.user.hasPermission
 import uy.kohesive.injekt.injectLazy
 import java.io.File
 import java.io.InputStream
 import java.util.Date
 import java.util.Timer
 import java.util.TimerTask
+import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
 object ProtoBackupImport : ProtoBackupBase() {
@@ -80,6 +86,11 @@ object ProtoBackupImport : ProtoBackupBase() {
             val totalManga: Int,
         ) : BackupRestoreState()
 
+        data class RestoringUserSettings(
+            val current: Int,
+            val totalManga: Int,
+        ) : BackupRestoreState()
+
         data class RestoringManga(
             val current: Int,
             val totalManga: Int,
@@ -88,6 +99,7 @@ object ProtoBackupImport : ProtoBackupBase() {
     }
 
     private val backupRestoreIdToState = ConcurrentHashMap<String, BackupRestoreState>()
+    private val restoreOwner = ConcurrentHashMap<String, Int>()
 
     val notifyFlow = MutableSharedFlow<Unit>(extraBufferCapacity = 1, onBufferOverflow = DROP_OLDEST)
 
@@ -98,7 +110,17 @@ object ProtoBackupImport : ProtoBackupBase() {
      * restore is read back from the database instead, so its status survives a restart and is not lost
      * when the in-memory cache is cleaned up.
      */
-    fun getRestoreState(id: String): BackupRestoreState? = backupRestoreIdToState[id] ?: BackupRestoreJob.get(id)?.toLegacyRestoreState()
+    fun getRestoreState(
+        id: String,
+        userId: Int,
+    ): BackupRestoreState? =
+        if (restoreOwner[id] == userId) {
+            backupRestoreIdToState[id]
+        } else if (userId == ARCHIVE_OWNER_ID && restoreOwner[id] == null) {
+            BackupRestoreJob.get(id)?.toLegacyRestoreState()
+        } else {
+            null
+        }
 
     /** Records that a durable restore moved, so a client that polls the flow sees the progress. */
     internal fun notifyRestoreStateChanged() {
@@ -125,39 +147,55 @@ object ProtoBackupImport : ProtoBackupBase() {
         timer.schedule(
             object : TimerTask() {
                 override fun run() {
-                    logger.debug { "cleanupRestoreState: $id (${getRestoreState(id)?.toStatus()?.state})" }
                     backupRestoreIdToState.remove(id)
+                    restoreOwner.remove(id)
                 }
             },
             delay,
         )
     }
 
-    @OptIn(DelicateCoroutinesApi::class)
     fun restore(
+        userId: Int,
         sourceStream: InputStream,
         flags: BackupFlags,
         syncMode: SyncRestoreMode = SyncRestoreMode.NONE,
         options: BackupRestoreJob.Request? = null,
     ): String {
-        // A plain restore is durable: the payload is staged once and a job row owns the progress, so a
-        // restart resumes a long import instead of losing it. A sync restore keeps the in-memory path,
-        // because the sync protocol needs the validation result in the same call and its payload is
-        // derived from the server, not uploaded.
-        if (syncMode == SyncRestoreMode.NONE) {
+        require(userId == ARCHIVE_OWNER_ID || options?.handoffRequested != true) {
+            "Only the built-in admin can start an archive bootstrap"
+        }
+        // Existing admin imports remain durable; other users retain upstream's per-user restore.
+        if (userId == ARCHIVE_OWNER_ID && syncMode == SyncRestoreMode.NONE) {
             return restoreDurably(sourceStream, options?.copy(flags = flags) ?: BackupRestoreJob.Request(flags))
         }
 
-        val restoreId = System.currentTimeMillis().toString()
+        // The upload stream closes with the HTTP request, before an asynchronous restore completes.
+        val uploaded = if (syncMode == SyncRestoreMode.NONE) decode(sourceStream, syncMode) else null
+        return queueRestore(userId, flags, syncMode) { uploaded ?: decode(sourceStream, syncMode) }
+    }
 
+    fun restore(
+        userId: Int,
+        backup: Backup,
+        flags: BackupFlags,
+        syncMode: SyncRestoreMode = SyncRestoreMode.NONE,
+    ): String = queueRestore(userId, flags, syncMode) { backup }
+
+    @OptIn(DelicateCoroutinesApi::class)
+    private fun queueRestore(
+        userId: Int,
+        flags: BackupFlags,
+        syncMode: SyncRestoreMode,
+        load: () -> Backup,
+    ): String {
+        val restoreId = UUID.randomUUID().toString()
         logger.info { "restore($restoreId): queued" }
-
+        restoreOwner[restoreId] = userId
         updateRestoreState(restoreId, BackupRestoreState.Idle)
-
         GlobalScope.launch {
-            restoreLegacy(sourceStream, restoreId, flags, syncMode)
+            runRestore(userId, restoreId, flags, syncMode, load)
         }
-
         return restoreId
     }
 
@@ -177,15 +215,27 @@ object ProtoBackupImport : ProtoBackupBase() {
     }
 
     suspend fun restoreLegacy(
+        userId: Int,
         sourceStream: InputStream,
         restoreId: String = "legacy",
         flags: BackupFlags = BackupFlags.DEFAULT,
         syncMode: SyncRestoreMode = SyncRestoreMode.NONE,
+    ): ValidationResult {
+        restoreOwner[restoreId] = userId
+        return runRestore(userId, restoreId, flags, syncMode) { decode(sourceStream, syncMode) }
+    }
+
+    private suspend fun runRestore(
+        userId: Int,
+        restoreId: String,
+        flags: BackupFlags,
+        syncMode: SyncRestoreMode,
+        load: () -> Backup,
     ): ValidationResult =
         backupMutex.withLock {
             try {
                 logger.info { "restore($restoreId): restoring..." }
-                performRestore(restoreId, sourceStream, flags, syncMode)
+                performRestore(userId, restoreId, load(), flags, syncMode)
             } catch (e: Exception) {
                 logger.error(e) { "restore($restoreId): failed due to" }
 
@@ -196,65 +246,110 @@ object ProtoBackupImport : ProtoBackupBase() {
                     emptyList(),
                     emptyList(),
                 )
+            } catch (e: OutOfMemoryError) {
+                logger.error { "restore($restoreId): out of memory" }
+
+                updateRestoreState(restoreId, BackupRestoreState.Failure)
+                ValidationResult(
+                    emptyList(),
+                    emptyList(),
+                    emptyList(),
+                    emptyList(),
+                )
             } finally {
                 if (syncMode.isSync) {
-                    clearSyncingFlags()
+                    clearSyncingFlags(userId)
                 }
-                logger.info { "restore($restoreId): finished with state ${getRestoreState(restoreId)?.toStatus()?.state}" }
+                logger.info { "restore($restoreId): finished with state ${getRestoreState(restoreId, userId)?.toStatus()?.state}" }
                 cleanupRestoreState(restoreId)
             }
         }
 
-    private fun clearSyncingFlags() {
+    private fun clearSyncingFlags(userId: Int) {
         transaction {
-            MangaTable.update({ MangaTable.isSyncing eq true }) {
-                it[isSyncing] = false
+            MangaUserTable.update(
+                {
+                    MangaUserTable.isSyncing eq true and (MangaUserTable.user eq userId)
+                },
+            ) {
+                it[MangaUserTable.isSyncing] = false
             }
-            ChapterTable.update({ ChapterTable.isSyncing eq true }) {
-                it[isSyncing] = false
+            ChapterUserTable.update(
+                {
+                    ChapterUserTable.isSyncing eq true and (ChapterUserTable.user eq userId)
+                },
+            ) {
+                it[ChapterUserTable.isSyncing] = false
             }
-            CategoryTable.update({ CategoryTable.isSyncing eq true }) {
-                it[isSyncing] = false
+            CategoryTable.update(
+                {
+                    CategoryTable.isSyncing eq true and (CategoryTable.user eq userId)
+                },
+            ) {
+                it[CategoryTable.isSyncing] = false
             }
         }
     }
 
-    private fun performRestore(
-        id: String,
+    private fun decode(
         sourceStream: InputStream,
-        flags: BackupFlags,
         syncMode: SyncRestoreMode,
-    ): ValidationResult {
-        val backupString =
+    ): Backup {
+        val bytes =
             sourceStream
                 .source()
                 .run {
                     if (!syncMode.isSync) gzip() else this
                 }.buffer()
                 .use { it.readByteArray() }
-        val backup = parser.decodeFromByteArray(Backup.serializer(), backupString)
+        return parser.decodeFromByteArray(Backup.serializer(), bytes)
+    }
 
-        val validationResult = validate(backup)
+    private fun performRestore(
+        userId: Int,
+        id: String,
+        backup: Backup,
+        flags: BackupFlags,
+        syncMode: SyncRestoreMode,
+    ): ValidationResult {
+        val validationResult = validate(userId, backup)
+
+        // only users with the MANAGE_SETTINGS permission can change the global server settings
+        val canManageSettings = hasPermission(userId, UserPermission.MANAGE_SETTINGS)
 
         val restoreCategories = if (flags.includeCategories) 1 else 0
         val restoreMeta = if (flags.includeClientData) 1 else 0
-        val restoreSettings = if (flags.includeServerSettings) 1 else 0
-        val getRestoreAmount = { size: Int -> size + restoreCategories + restoreMeta + restoreSettings }
+        val restoreSettings = if (flags.includeServerSettings && canManageSettings) 1 else 0
+        val restoreUserSettings = if (flags.includeUserSettings) 1 else 0
+        val getRestoreAmount = { size: Int -> size + restoreCategories + restoreMeta + restoreSettings + restoreUserSettings }
         val restoreAmount = getRestoreAmount(if (flags.includeManga) backup.backupManga.size else 0)
 
-        if (flags.includeServerSettings) {
+        if (flags.includeServerSettings && canManageSettings) {
             updateRestoreState(
                 id,
                 BackupRestoreState.RestoringSettings(restoreSettings, restoreAmount),
             )
 
-            BackupSettingsHandler.restore(backup.serverSettings)
+            BackupSettingsHandler.restore(backup.serverSettings, userId)
+        }
+
+        if (flags.includeUserSettings) {
+            updateRestoreState(
+                id,
+                BackupRestoreState.RestoringUserSettings(restoreSettings, restoreAmount),
+            )
+
+            BackupUserSettingsHandler.restore(
+                userId,
+                backup.userSettings,
+                backup.serverSettings,
+            )
         }
 
         val categoryMapping =
             if (flags.includeCategories) {
                 updateRestoreState(id, BackupRestoreState.RestoringCategories(restoreSettings + restoreCategories, restoreAmount))
-                BackupCategoryHandler.restore(backup.backupCategories, syncMode)
+                BackupCategoryHandler.restore(userId, backup.backupCategories, syncMode)
             } else {
                 emptyMap()
             }
@@ -262,9 +357,9 @@ object ProtoBackupImport : ProtoBackupBase() {
         if (flags.includeClientData) {
             updateRestoreState(id, BackupRestoreState.RestoringMeta(restoreSettings + restoreCategories + restoreMeta, restoreAmount))
 
-            BackupGlobalMetaHandler.restore(backup.meta)
+            BackupGlobalMetaHandler.restore(userId, backup.meta)
 
-            BackupSourceHandler.restore(backup.backupSources)
+            BackupSourceHandler.restore(userId, backup.backupSources)
         }
 
         // Store source mapping for error messages
@@ -285,6 +380,7 @@ object ProtoBackupImport : ProtoBackupBase() {
                 )
 
                 BackupMangaHandler.restore(
+                    userId,
                     backupManga = manga,
                     categoryMapping = categoryMapping,
                     sourceMapping = sourceMapping,

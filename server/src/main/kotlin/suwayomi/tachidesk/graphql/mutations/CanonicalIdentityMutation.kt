@@ -8,7 +8,7 @@ package suwayomi.tachidesk.graphql.mutations
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import kotlinx.serialization.json.Json
-import suwayomi.tachidesk.graphql.directives.RequireAuth
+import suwayomi.tachidesk.graphql.directives.RequireArchiveOwner
 import suwayomi.tachidesk.graphql.types.CanonicalIdentityExportType
 import suwayomi.tachidesk.graphql.types.CanonicalIdentityImportType
 import suwayomi.tachidesk.graphql.types.CanonicalSourceBindingType
@@ -45,7 +45,7 @@ class CanonicalIdentityMutation {
     )
 
     /** Creates an empty work; bindings are attached afterwards, one source at a time. */
-    @RequireAuth
+    @RequireArchiveOwner
     fun createCanonicalWork(input: CreateCanonicalWorkInput): CreateCanonicalWorkPayload {
         val (clientMutationId, title, duplicateStrategy, preferredScanlator) = input
 
@@ -74,7 +74,7 @@ class CanonicalIdentityMutation {
         val work: CanonicalWorkType?,
     )
 
-    @RequireAuth
+    @RequireArchiveOwner
     fun updateCanonicalWork(input: UpdateCanonicalWorkInput): UpdateCanonicalWorkPayload {
         val (clientMutationId, workKey, title, duplicateStrategy, preferredScanlator, clearPreferredScanlator) = input
 
@@ -101,7 +101,7 @@ class CanonicalIdentityMutation {
     )
 
     /** Deletes a work, but only while it has no bindings; detach them first. */
-    @RequireAuth
+    @RequireArchiveOwner
     fun deleteCanonicalWork(input: DeleteCanonicalWorkInput): DeleteCanonicalWorkPayload {
         val (clientMutationId, workKey) = input
 
@@ -124,7 +124,7 @@ class CanonicalIdentityMutation {
         val binding: CanonicalSourceBindingType?,
     )
 
-    @RequireAuth
+    @RequireArchiveOwner
     fun attachMangaToCanonicalWork(input: AttachMangaToCanonicalWorkInput): AttachMangaToCanonicalWorkPayload {
         val (clientMutationId, workKey, mangaId, role, priority, isPrimary) = input
 
@@ -145,7 +145,7 @@ class CanonicalIdentityMutation {
     )
 
     /** Removes a binding. The work, the manga, every revision and everything archived stay put. */
-    @RequireAuth
+    @RequireArchiveOwner
     fun detachCanonicalBinding(input: DetachCanonicalBindingInput): DetachCanonicalBindingPayload {
         val (clientMutationId, bindingId) = input
 
@@ -168,7 +168,7 @@ class CanonicalIdentityMutation {
     )
 
     /** Changes a binding's role and/or its ordering place. `DISABLED` also clears the primary marker. */
-    @RequireAuth
+    @RequireArchiveOwner
     fun changeCanonicalBinding(input: ChangeCanonicalBindingInput): ChangeCanonicalBindingPayload {
         val (clientMutationId, bindingId, role, priority) = input
 
@@ -189,7 +189,7 @@ class CanonicalIdentityMutation {
     )
 
     /** Makes one binding the work's preferred source without disabling the others. */
-    @RequireAuth
+    @RequireArchiveOwner
     fun promoteCanonicalBinding(input: PromoteCanonicalBindingInput): PromoteCanonicalBindingPayload {
         val (clientMutationId, bindingId) = input
 
@@ -215,7 +215,7 @@ class CanonicalIdentityMutation {
      * abandoned primary is demoted to `FALLBACK`, so it stops feeding discovery but is kept, audited
      * and can be promoted back.
      */
-    @RequireAuth
+    @RequireArchiveOwner
     fun failoverCanonicalWork(input: FailoverCanonicalWorkInput): FailoverCanonicalWorkPayload {
         val (clientMutationId, workKey, bindingId) = input
 
@@ -238,7 +238,7 @@ class CanonicalIdentityMutation {
      * manga happened to be restored first. Keeping it separate leaves the existing backup wire - which
      * other servers also read - untouched.
      */
-    @RequireAuth
+    @RequireArchiveOwner
     fun exportCanonicalIdentity(clientMutationId: String? = null): ExportCanonicalIdentityPayload {
         val document = CanonicalIdentity.exportDocument()
 
@@ -270,7 +270,7 @@ class CanonicalIdentityMutation {
      * is not present is imported detached with its snapshot, so an unresolved source stays visible
      * instead of disappearing.
      */
-    @RequireAuth
+    @RequireArchiveOwner
     fun importCanonicalIdentity(input: ImportCanonicalIdentityInput): ImportCanonicalIdentityPayload {
         val (clientMutationId, payload) = input
 

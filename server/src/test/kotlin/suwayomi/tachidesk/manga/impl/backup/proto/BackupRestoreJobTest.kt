@@ -167,17 +167,18 @@ class BackupRestoreJobTest : ApplicationTest() {
         val job = createJob()
 
         // the database is authoritative: nothing was ever put into the legacy in-memory map
-        val state = ProtoBackupImport.getRestoreState(job.restoreId)
+        val state = ProtoBackupImport.getRestoreState(job.restoreId, 1)
         assertNotNull(state)
         assertTrue(state is ProtoBackupImport.BackupRestoreState.Idle)
-        assertNull(ProtoBackupImport.getRestoreState("does-not-exist"))
+        assertNull(ProtoBackupImport.getRestoreState("does-not-exist", 1))
     }
 
     @Test
     fun `keeps an ordinary restore out of the durable queue when it is a sync restore`() {
         ProtoBackupImport.restore(
-            ByteArrayInputStream("not-a-backup".toByteArray()),
-            BackupFlags.DEFAULT,
+            userId = 1,
+            sourceStream = ByteArrayInputStream("not-a-backup".toByteArray()),
+            flags = BackupFlags.DEFAULT,
             syncMode = SyncRestoreMode.ADOPT,
         )
 

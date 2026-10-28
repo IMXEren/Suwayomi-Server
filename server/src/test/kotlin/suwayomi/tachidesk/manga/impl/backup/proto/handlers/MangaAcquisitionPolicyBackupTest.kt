@@ -53,7 +53,7 @@ class MangaAcquisitionPolicyBackupTest : ApplicationTest() {
         transaction { MangaType(MangaTable.selectAll().where { MangaTable.url eq url }.first()) }.acquisitionPolicy
 
     private fun restore(manga: BackupManga) {
-        BackupMangaHandler.restore(manga, emptyMap(), emptyMap(), errors, backupFlags)
+        BackupMangaHandler.restore(1, manga, emptyMap(), emptyMap(), errors, backupFlags)
         assertTrue(errors.isEmpty(), errors.joinToString())
     }
 
@@ -121,7 +121,7 @@ class MangaAcquisitionPolicyBackupTest : ApplicationTest() {
         restorePolicy("/m", policy = "AUTO", present = true)
         assertEquals(MangaAcquisitionPolicy.AUTO, storedOverride("/m"))
 
-        val exported = BackupMangaHandler.backup(backupFlags).single { it.url == "/m" }
+        val exported = BackupMangaHandler.backup(1, backupFlags).single { it.url == "/m" }
         assertEquals("AUTO", exported.acquisitionPolicy)
         assertTrue(exported.acquisitionPolicyPresent, "an export always marks the field as authoritative")
     }

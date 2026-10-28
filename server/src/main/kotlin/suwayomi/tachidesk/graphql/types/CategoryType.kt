@@ -15,6 +15,8 @@ import suwayomi.tachidesk.graphql.server.primitives.Edge
 import suwayomi.tachidesk.graphql.server.primitives.Node
 import suwayomi.tachidesk.graphql.server.primitives.NodeList
 import suwayomi.tachidesk.graphql.server.primitives.PageInfo
+import suwayomi.tachidesk.graphql.server.primitives.getNodeListFromDataLoaders
+import suwayomi.tachidesk.graphql.types.MangaNodeList.Companion.toNodeList
 import suwayomi.tachidesk.manga.model.dataclass.CategoryDataClass
 import suwayomi.tachidesk.manga.model.dataclass.IncludeOrExclude
 import suwayomi.tachidesk.manga.model.table.CategoryTable
@@ -27,7 +29,7 @@ class CategoryType(
     val default: Boolean,
     val includeInUpdate: IncludeOrExclude,
     val includeInDownload: IncludeOrExclude,
-    val isDefaultCategory: Boolean = id == 0,
+    val isDefaultCategory: Boolean,
 ) : Node {
     constructor(row: ResultRow) : this(
         row[CategoryTable.id].value,
@@ -36,6 +38,7 @@ class CategoryType(
         row[CategoryTable.isDefault],
         IncludeOrExclude.fromValue(row[CategoryTable.includeInUpdate]),
         IncludeOrExclude.fromValue(row[CategoryTable.includeInDownload]),
+        row[CategoryTable.isDefaultCategory],
     )
 
     constructor(dataClass: CategoryDataClass) : this(
@@ -45,10 +48,13 @@ class CategoryType(
         dataClass.default,
         dataClass.includeInUpdate,
         dataClass.includeInDownload,
+        dataClass.isDefaultCategory,
     )
 
     fun mangas(dataFetchingEnvironment: DataFetchingEnvironment): CompletableFuture<MangaNodeList> =
-        dataFetchingEnvironment.getValueFromDataLoader<Int, MangaNodeList>("MangaForCategoryDataLoader", id)
+        dataFetchingEnvironment.getNodeListFromDataLoaders("MangaForCategoryDataLoader", "MangaCountForCategoryDataLoader", id) {
+            emptyList<MangaType>().toNodeList().copy(totalCount = it)
+        }
 
     fun meta(dataFetchingEnvironment: DataFetchingEnvironment): CompletableFuture<List<CategoryMetaType>> =
         dataFetchingEnvironment.getValueFromDataLoader<Int, List<CategoryMetaType>>("CategoryMetaDataLoader", id)

@@ -12,7 +12,7 @@ import org.jetbrains.exposed.v1.core.eq
 import org.jetbrains.exposed.v1.jdbc.andWhere
 import org.jetbrains.exposed.v1.jdbc.selectAll
 import org.jetbrains.exposed.v1.jdbc.transactions.transaction
-import suwayomi.tachidesk.graphql.directives.RequireAuth
+import suwayomi.tachidesk.graphql.directives.RequireArchiveOwner
 import suwayomi.tachidesk.graphql.types.BackupRestoreAuditType
 import suwayomi.tachidesk.graphql.types.BackupRestoreJobType
 import suwayomi.tachidesk.manga.model.dataclass.BackupRestoreAuditLevel
@@ -24,21 +24,20 @@ import suwayomi.tachidesk.manga.model.table.toDataClass
 /**
  * Read access to durable `.tachibk` restores.
  *
- * Everything here is authenticated: a restore reveals which series an operator owns, so it belongs to
- * the same trust boundary as the library APIs. No backup content is exposed - only how far the import
- * got and what it could not apply.
+     * Durable jobs belong to the built-in admin's shared archive; other users' restores use upstream's
+     * per-user in-memory status instead.
  */
 class BackupRestoreQuery {
     /** Bounded because a job reveals the shape of a library and no client needs thousands at once. */
     private val maxPageSize = 200
 
     /** Restores of this server, newest first by default. */
-    @RequireAuth
+    @RequireArchiveOwner
     fun backupRestoreJobs(
         state: BackupRestoreJobState? = null,
         limit: Int = 20,
-    ): List<BackupRestoreJobType> =
-        transaction {
+    ): List<BackupRestoreJobType> {
+        return transaction {
             val query = BackupRestoreJobTable.selectAll()
             if (state != null) {
                 query.andWhere { BackupRestoreJobTable.state eq state.name }
@@ -49,6 +48,7 @@ class BackupRestoreQuery {
                 .limit(limit.coerceIn(1, maxPageSize))
                 .map { BackupRestoreJobType(BackupRestoreJobTable.toDataClass(it)) }
         }
+    }
 
     /**
      * One restore by the id its upload returned.
@@ -56,15 +56,18 @@ class BackupRestoreQuery {
      * The same id the legacy status query accepts, so a client can move from the status poll to the
      * durable view without discovering a second identifier.
      */
-    @RequireAuth
-    fun backupRestoreJob(restoreId: String): BackupRestoreJobType? =
-        transaction {
+    @RequireArchiveOwner
+    fun backupRestoreJob(
+        restoreId: String,
+    ): BackupRestoreJobType? {
+        return transaction {
             BackupRestoreJobTable
                 .selectAll()
                 .where { BackupRestoreJobTable.restoreId eq restoreId }
                 .firstOrNull()
                 ?.let { BackupRestoreJobType(BackupRestoreJobTable.toDataClass(it)) }
         }
+    }
 
     /**
      * What a restore could not apply, oldest first.
@@ -72,13 +75,13 @@ class BackupRestoreQuery {
      * A missing source and a series the existing handler refused are both reported here instead of
      * aborting the import, so an operator sees exactly which extension or series to look at.
      */
-    @RequireAuth
+    @RequireArchiveOwner
     fun backupRestoreAudits(
         restoreId: String,
         level: BackupRestoreAuditLevel? = null,
         limit: Int = 100,
-    ): List<BackupRestoreAuditType> =
-        transaction {
+    ): List<BackupRestoreAuditType> {
+        return transaction {
             val job =
                 BackupRestoreJobTable
                     .selectAll()
@@ -97,11 +100,14 @@ class BackupRestoreQuery {
                 .limit(limit.coerceIn(1, maxPageSize))
                 .map { BackupRestoreAuditType(BackupRestoreJobAuditTable.toDataClass(it)) }
         }
+    }
 
     /** Counts of one restore's problems, split by level, without loading the rows. */
-    @RequireAuth
-    fun backupRestoreErrorCounts(restoreId: String): BackupRestoreErrorCountsType? =
-        transaction {
+    @RequireArchiveOwner
+    fun backupRestoreErrorCounts(
+        restoreId: String,
+    ): BackupRestoreErrorCountsType? {
+        return transaction {
             val job =
                 BackupRestoreJobTable
                     .selectAll()
@@ -122,6 +128,7 @@ class BackupRestoreQuery {
                 missingSources = audits.count { it == BackupRestoreAuditLevel.MISSING_SOURCE.name },
             )
         }
+    }
 }
 
 /** How many of each kind of problem a restore recorded. */

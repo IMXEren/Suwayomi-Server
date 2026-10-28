@@ -19,7 +19,9 @@ import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
+import suwayomi.tachidesk.graphql.directives.RequireArchiveOwnerDirectiveWiring
 import suwayomi.tachidesk.graphql.directives.RequireAuthDirectiveWiring
+import suwayomi.tachidesk.graphql.directives.RequirePermissionsDirectiveWiring
 import suwayomi.tachidesk.graphql.mutations.ArchiveBootstrapMutation
 import suwayomi.tachidesk.graphql.mutations.BackupMutation
 import suwayomi.tachidesk.graphql.mutations.BackupRestoreMutation
@@ -45,6 +47,7 @@ import suwayomi.tachidesk.graphql.mutations.SyncMutation
 import suwayomi.tachidesk.graphql.mutations.TrackMutation
 import suwayomi.tachidesk.graphql.mutations.UpdateMutation
 import suwayomi.tachidesk.graphql.mutations.UserMutation
+import suwayomi.tachidesk.graphql.mutations.UserSettingsMutation
 import suwayomi.tachidesk.graphql.mutations.WebviewMutation
 import suwayomi.tachidesk.graphql.queries.ArchiveBootstrapQuery
 import suwayomi.tachidesk.graphql.queries.BackupQuery
@@ -69,6 +72,8 @@ import suwayomi.tachidesk.graphql.queries.SourceQuery
 import suwayomi.tachidesk.graphql.queries.SyncQuery
 import suwayomi.tachidesk.graphql.queries.TrackQuery
 import suwayomi.tachidesk.graphql.queries.UpdateQuery
+import suwayomi.tachidesk.graphql.queries.UserQuery
+import suwayomi.tachidesk.graphql.queries.UserSettingsQuery
 import suwayomi.tachidesk.graphql.queries.WebviewQuery
 import suwayomi.tachidesk.graphql.server.primitives.Cursor
 import suwayomi.tachidesk.graphql.server.primitives.GraphQLCursor
@@ -86,7 +91,12 @@ import kotlin.time.Duration
 class CustomSchemaGeneratorHooks : FlowSubscriptionSchemaGeneratorHooks() {
     override val wiringFactory =
         KotlinDirectiveWiringFactory(
-            manualWiring = mapOf("requireAuth" to RequireAuthDirectiveWiring()),
+            manualWiring =
+                mapOf(
+                    "requireAuth" to RequireAuthDirectiveWiring(),
+                    "requireArchiveOwner" to RequireArchiveOwnerDirectiveWiring(),
+                    "requirePermissions" to RequirePermissionsDirectiveWiring(),
+                ),
         )
 
     override fun willGenerateGraphQLType(type: KType): GraphQLType? =
@@ -141,6 +151,8 @@ object GraphQLSchemaProvider {
                         TopLevelObject(SyncQuery()),
                         TopLevelObject(TrackQuery()),
                         TopLevelObject(UpdateQuery()),
+                        TopLevelObject(UserQuery()),
+                        TopLevelObject(UserSettingsQuery()),
                         TopLevelObject(WebviewQuery()),
                     ),
                 mutations =
@@ -170,6 +182,7 @@ object GraphQLSchemaProvider {
                         TopLevelObject(TrackMutation()),
                         TopLevelObject(UpdateMutation()),
                         TopLevelObject(UserMutation()),
+                        TopLevelObject(UserSettingsMutation()),
                         TopLevelObject(WebviewMutation()),
                     ),
                 subscriptions =

@@ -1,11 +1,13 @@
 package suwayomi.tachidesk.graphql.queries
 
 import com.expediagroup.graphql.generator.annotations.GraphQLDeprecated
+import com.expediagroup.graphql.generator.annotations.GraphQLIgnore
 import com.expediagroup.graphql.server.extensions.getValueFromDataLoader
 import graphql.schema.DataFetchingEnvironment
 import org.jetbrains.exposed.v1.core.Column
 import org.jetbrains.exposed.v1.core.Op
 import org.jetbrains.exposed.v1.core.SortOrder
+import org.jetbrains.exposed.v1.core.eq
 import org.jetbrains.exposed.v1.core.greater
 import org.jetbrains.exposed.v1.core.less
 import org.jetbrains.exposed.v1.jdbc.selectAll
@@ -27,6 +29,7 @@ import suwayomi.tachidesk.graphql.server.primitives.Cursor
 import suwayomi.tachidesk.graphql.server.primitives.Order
 import suwayomi.tachidesk.graphql.server.primitives.OrderBy
 import suwayomi.tachidesk.graphql.server.primitives.PageInfo
+import suwayomi.tachidesk.graphql.server.primitives.PaginationNeeds
 import suwayomi.tachidesk.graphql.server.primitives.QueryResults
 import suwayomi.tachidesk.graphql.server.primitives.applyBeforeAfter
 import suwayomi.tachidesk.graphql.server.primitives.applySortAndGetPaginationInfo
@@ -131,6 +134,8 @@ class TrackQuery {
 
     @RequireAuth
     fun trackers(
+        @GraphQLIgnore
+        userId: Int,
         condition: TrackerCondition? = null,
         @GraphQLDeprecated(
             "Replaced with order",
@@ -151,7 +156,7 @@ class TrackQuery {
     ): TrackerNodeList {
         val (queryResults, resultsAsType) =
             run {
-                var res = TrackerManager.services.map { TrackerType(it) }
+                var res = TrackerManager.services.map { TrackerType(it, userId) }
 
                 if (condition != null) {
                     res =
@@ -346,8 +351,8 @@ class TrackQuery {
         val startDate: Long? = null,
         val finishDate: Long? = null,
         val private: Boolean? = null,
-    ) : HasGetOp {
-        override fun getOp(): Op<Boolean>? {
+    ) : HasGetOp<Any?> {
+        override fun getOp(value: Any?): Op<Boolean>? {
             val opAnd = OpAnd()
             opAnd.eq(id, TrackRecordTable.id)
             opAnd.eq(mangaId, TrackRecordTable.mangaId)
@@ -386,8 +391,8 @@ class TrackQuery {
         override val and: List<TrackRecordFilter>? = null,
         override val or: List<TrackRecordFilter>? = null,
         override val not: TrackRecordFilter? = null,
-    ) : Filter<TrackRecordFilter> {
-        override fun getOpList(): List<Op<Boolean>> =
+    ) : Filter<TrackRecordFilter, Any?> {
+        override fun getOpList(value: Any?): List<Op<Boolean>> =
             listOfNotNull(
                 andFilterWithCompareEntity(TrackRecordTable.id, id),
                 andFilterWithCompareEntity(TrackRecordTable.mangaId, mangaId),
@@ -408,6 +413,9 @@ class TrackQuery {
 
     @RequireAuth
     fun trackRecords(
+        @GraphQLIgnore
+        userId: Int,
+        dataFetchingEnvironment: DataFetchingEnvironment,
         condition: TrackRecordCondition? = null,
         filter: TrackRecordFilter? = null,
         @GraphQLDeprecated(
@@ -429,16 +437,22 @@ class TrackQuery {
     ): TrackRecordNodeList {
         val queryResults =
             transaction {
-                val res = TrackRecordTable.selectAll()
+                val res = TrackRecordTable.selectAll().where { TrackRecordTable.user eq userId }
 
-                res.applyOps(condition, filter)
+                res.applyOps(null, condition, filter)
 
                 val baseSort = listOf(TrackRecordOrder(TrackRecordOrderBy.ID, SortOrder.ASC))
                 val deprecatedSort = listOfNotNull(orderBy?.let { TrackRecordOrder(orderBy, orderByType) })
                 val actualSort = (order.orEmpty() + deprecatedSort + baseSort)
 
                 val (total, firstResult, lastResult) =
-                    res.applySortAndGetPaginationInfo(actualSort, before, last, TrackRecordTable.id)
+                    res.applySortAndGetPaginationInfo(
+                        actualSort,
+                        before,
+                        last,
+                        TrackRecordTable.id,
+                        PaginationNeeds.of(dataFetchingEnvironment),
+                    )
 
                 res.applyBeforeAfter(
                     before = before,
@@ -501,17 +515,21 @@ class TrackQuery {
     )
 
     @RequireAuth
-    fun searchTracker(input: SearchTrackerInput): CompletableFuture<SearchTrackerPayload> =
+    fun searchTracker(
+        @GraphQLIgnore
+        userId: Int,
+        input: SearchTrackerInput,
+    ): CompletableFuture<SearchTrackerPayload> =
         future {
             val tracker =
                 requireNotNull(TrackerManager.getTracker(input.trackerId)) {
                     "Tracker not found"
                 }
-            require(tracker.isLoggedIn) {
+            require(tracker.isLoggedIn(userId)) {
                 "Tracker needs to be logged-in to search"
             }
             SearchTrackerPayload(
-                tracker.search(input.query).insertAll().map {
+                tracker.search(userId, input.query).insertAll().map {
                     TrackSearchType(it)
                 },
             )

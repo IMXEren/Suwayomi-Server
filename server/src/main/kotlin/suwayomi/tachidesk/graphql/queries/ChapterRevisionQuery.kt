@@ -21,7 +21,7 @@ import org.jetbrains.exposed.v1.core.less
 import org.jetbrains.exposed.v1.jdbc.andWhere
 import org.jetbrains.exposed.v1.jdbc.selectAll
 import org.jetbrains.exposed.v1.jdbc.transactions.transaction
-import suwayomi.tachidesk.graphql.directives.RequireAuth
+import suwayomi.tachidesk.graphql.directives.RequireArchiveOwner
 import suwayomi.tachidesk.graphql.server.primitives.Cursor
 import suwayomi.tachidesk.graphql.server.primitives.Order
 import suwayomi.tachidesk.graphql.server.primitives.OrderBy
@@ -53,7 +53,7 @@ import suwayomi.tachidesk.manga.model.table.toDataClass
 import java.util.concurrent.CompletableFuture
 
 class ChapterRevisionQuery {
-    @RequireAuth
+    @RequireArchiveOwner
     fun chapterRevision(
         dataFetchingEnvironment: DataFetchingEnvironment,
         id: Int,
@@ -109,7 +109,7 @@ class ChapterRevisionQuery {
      * would make the archive state of a still-downloading candidate unexpressible. They are
      * AND-ed together with every other argument.
      */
-    @RequireAuth
+    @RequireArchiveOwner
     fun chapterRevisions(
         chapterId: Int? = null,
         chapterKey: String? = null,
@@ -150,7 +150,7 @@ class ChapterRevisionQuery {
         )
 
     /** Candidates waiting for explicit approval. */
-    @RequireAuth
+    @RequireArchiveOwner
     fun approvalBacklog(
         order: List<ChapterRevisionOrder>? = null,
         before: Cursor? = null,
@@ -179,7 +179,7 @@ class ChapterRevisionQuery {
         )
 
     /** Approved candidates waiting to be acquired, ordered by queue entry then id. */
-    @RequireAuth
+    @RequireArchiveOwner
     fun queuedBacklog(
         order: List<ChapterRevisionOrder>? = null,
         before: Cursor? = null,
@@ -208,7 +208,7 @@ class ChapterRevisionQuery {
         )
 
     /** The active accepted revision of a chapter identity, or null when it has none. */
-    @RequireAuth
+    @RequireArchiveOwner
     fun activeChapterRevision(chapterKey: String): ChapterRevisionType? =
         ChapterRevision.getActiveRevision(chapterKey)?.let { ChapterRevisionType(it) }
 
@@ -219,7 +219,7 @@ class ChapterRevisionQuery {
      * so it uses the same cursor pagination machinery as the other revision listings. The default
      * order is the non-null `(DISCOVERED_AT DESC, ID DESC)`, which is what makes the cursor stable.
      */
-    @RequireAuth
+    @RequireArchiveOwner
     fun chapterRevisionHistory(
         chapterKey: String,
         order: List<ChapterRevisionOrder>? = null,
@@ -245,7 +245,7 @@ class ChapterRevisionQuery {
         )
 
     /** Active revisions whose publication has failed and can be retried. */
-    @RequireAuth
+    @RequireArchiveOwner
     fun publicationBacklog(
         order: List<ChapterRevisionOrder>? = null,
         before: Cursor? = null,
@@ -273,7 +273,7 @@ class ChapterRevisionQuery {
      * A revision that is already PRUNED is deliberately absent: its payload is gone for good, so only
      * re-acquiring the revision can bring it back.
      */
-    @RequireAuth
+    @RequireArchiveOwner
     fun pruningBacklog(
         order: List<ChapterRevisionOrder>? = null,
         before: Cursor? = null,
@@ -299,7 +299,7 @@ class ChapterRevisionQuery {
      * A separate listing rather than a filter argument, because this is the operator's "what is the
      * analysis doing" view: it is exactly the set the worker will pick up next.
      */
-    @RequireAuth
+    @RequireArchiveOwner
     fun visualAnalysisBacklog(
         order: List<ChapterRevisionOrder>? = null,
         before: Cursor? = null,
@@ -322,7 +322,7 @@ class ChapterRevisionQuery {
         )
 
     /** How much visual-analysis work is outstanding, and how the finished ones turned out. */
-    @RequireAuth
+    @RequireArchiveOwner
     fun chapterRevisionVisualAnalysisStatus(): ChapterRevisionVisualAnalysisStatus =
         transaction {
             fun countOf(state: ChapterVisualAnalysisState): Int =
@@ -343,7 +343,7 @@ class ChapterRevisionQuery {
         }
 
     /** The stored page-by-page comparison of one revision, or null when none was produced. */
-    @RequireAuth
+    @RequireArchiveOwner
     fun chapterRevisionComparison(revisionId: Int): ChapterRevisionComparisonType? =
         ChapterRevisionComparisonStore.getComparison(revisionId)?.let { ChapterRevisionComparisonType(it) }
 
@@ -354,7 +354,7 @@ class ChapterRevisionQuery {
      * ordinal that was returned. That keeps paging stable without a nullable timestamp to break ties
      * on, which is what a cursor needs to stay correct.
      */
-    @RequireAuth
+    @RequireArchiveOwner
     fun chapterRevisionComparisonPages(
         revisionId: Int,
         after: Cursor? = null,

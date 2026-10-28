@@ -7,7 +7,7 @@ package suwayomi.tachidesk.graphql.mutations
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import suwayomi.tachidesk.graphql.directives.RequireAuth
+import suwayomi.tachidesk.graphql.directives.RequireArchiveOwner
 import suwayomi.tachidesk.graphql.types.ArchiveBootstrapSessionType
 import suwayomi.tachidesk.manga.impl.ArchiveBootstrap
 import suwayomi.tachidesk.manga.impl.ArchiveBootstrapExecutor
@@ -43,7 +43,7 @@ class ArchiveBootstrapMutation {
         val error: String?,
     )
 
-    @RequireAuth
+    @RequireArchiveOwner
     fun startArchiveBootstrap(input: StartArchiveBootstrapInput): StartArchiveBootstrapPayload {
         val request =
             ArchiveBootstrap.StartRequest(
@@ -98,7 +98,7 @@ class ArchiveBootstrapMutation {
     )
 
     /** Stops claiming new series; one already being processed is allowed to finish. */
-    @RequireAuth
+    @RequireArchiveOwner
     fun pauseArchiveBootstrap(input: ArchiveBootstrapSessionInput): ArchiveBootstrapSessionPayload {
         val session = ArchiveBootstrap.pause(input.sessionId)
         return ArchiveBootstrapSessionPayload(
@@ -109,7 +109,7 @@ class ArchiveBootstrapMutation {
         )
     }
 
-    @RequireAuth
+    @RequireArchiveOwner
     fun resumeArchiveBootstrap(input: ArchiveBootstrapSessionInput): ArchiveBootstrapSessionPayload {
         val session = ArchiveBootstrap.resume(input.sessionId)
         if (session != null) {
@@ -125,7 +125,7 @@ class ArchiveBootstrapMutation {
     }
 
     /** Abandons a run. Every unfinished series is recorded as cancelled. */
-    @RequireAuth
+    @RequireArchiveOwner
     fun cancelArchiveBootstrap(input: ArchiveBootstrapSessionInput): ArchiveBootstrapSessionPayload {
         val session = ArchiveBootstrap.cancel(input.sessionId)
         return ArchiveBootstrapSessionPayload(
@@ -150,7 +150,7 @@ class ArchiveBootstrapMutation {
         val error: String?,
     )
 
-    @RequireAuth
+    @RequireArchiveOwner
     fun retryArchiveBootstrapItems(input: RetryArchiveBootstrapItemsInput): RetryArchiveBootstrapItemsPayload =
         when (val outcome = ArchiveBootstrap.retry(input.sessionId, input.itemIds)) {
             is ArchiveBootstrap.RetryOutcome.Retried -> {

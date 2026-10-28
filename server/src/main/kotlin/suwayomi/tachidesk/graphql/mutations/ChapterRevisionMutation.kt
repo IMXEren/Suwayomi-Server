@@ -7,7 +7,7 @@ package suwayomi.tachidesk.graphql.mutations
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import suwayomi.tachidesk.graphql.directives.RequireAuth
+import suwayomi.tachidesk.graphql.directives.RequireArchiveOwner
 import suwayomi.tachidesk.graphql.types.ChapterRevisionType
 import suwayomi.tachidesk.manga.impl.ChapterRevision
 import suwayomi.tachidesk.manga.impl.ChapterRevisionAcquisitionExecutor
@@ -35,7 +35,7 @@ class ChapterRevisionMutation {
      * the revision's content, archive or publication. A retry that fails leaves the previous summary
      * in place.
      */
-    @RequireAuth
+    @RequireArchiveOwner
     fun retryChapterRevisionVisualAnalyses(input: RetryChapterRevisionVisualAnalysesInput): RetryChapterRevisionVisualAnalysesPayload {
         val (clientMutationId, ids) = input
 
@@ -54,7 +54,7 @@ class ChapterRevisionMutation {
         val revisions: List<ChapterRevisionType>,
     )
 
-    @RequireAuth
+    @RequireArchiveOwner
     fun approveChapterRevisions(input: ApproveChapterRevisionsInput): ApproveChapterRevisionsPayload {
         val (clientMutationId, ids) = input
 
@@ -74,7 +74,7 @@ class ChapterRevisionMutation {
     )
 
     /** Re-queues candidates whose acquisition failed, preserving their attempt count. */
-    @RequireAuth
+    @RequireArchiveOwner
     fun retryChapterRevisions(input: RetryChapterRevisionsInput): RetryChapterRevisionsPayload {
         val (clientMutationId, ids) = input
 
@@ -98,7 +98,7 @@ class ChapterRevisionMutation {
      *
      * Published artifacts of the failed attempt are removed before the retry becomes visible.
      */
-    @RequireAuth
+    @RequireArchiveOwner
     fun retryChapterRevisionArchives(input: RetryChapterRevisionArchivesInput): RetryChapterRevisionArchivesPayload {
         val (clientMutationId, ids) = input
 
@@ -117,7 +117,7 @@ class ChapterRevisionMutation {
         val revisions: List<ChapterRevisionType>,
     )
 
-    @RequireAuth
+    @RequireArchiveOwner
     fun rejectChapterRevisions(input: RejectChapterRevisionsInput): RejectChapterRevisionsPayload {
         val (clientMutationId, ids) = input
 
@@ -140,7 +140,7 @@ class ChapterRevisionMutation {
      * ACCEPT_CANDIDATE: the candidate becomes the sole active revision and the previously active one
      * becomes superseded. Only a remotely-confirmed candidate can be accepted.
      */
-    @RequireAuth
+    @RequireArchiveOwner
     fun acceptChapterRevisionCandidates(input: AcceptChapterRevisionCandidatesInput): AcceptChapterRevisionCandidatesPayload {
         val (clientMutationId, ids) = input
 
@@ -160,7 +160,7 @@ class ChapterRevisionMutation {
     )
 
     /** KEEP_CURRENT: the candidate is rejected so the currently active revision keeps its place. */
-    @RequireAuth
+    @RequireArchiveOwner
     fun keepCurrentChapterRevisions(input: KeepCurrentChapterRevisionsInput): KeepCurrentChapterRevisionsPayload {
         val (clientMutationId, ids) = input
 
@@ -183,7 +183,7 @@ class ChapterRevisionMutation {
      * KEEP_BOTH: the candidate is accepted as historical, archived content while the active revision
      * keeps its place. Only a remotely-confirmed candidate can be accepted.
      */
-    @RequireAuth
+    @RequireArchiveOwner
     fun keepBothChapterRevisions(input: KeepBothChapterRevisionsInput): KeepBothChapterRevisionsPayload {
         val (clientMutationId, ids) = input
 
@@ -193,7 +193,7 @@ class ChapterRevisionMutation {
     }
 
     /** REJECT_CANDIDATE: the candidate is rejected outright. */
-    @RequireAuth
+    @RequireArchiveOwner
     fun rejectChapterRevisionCandidates(input: RejectChapterRevisionCandidatesInput): RejectChapterRevisionCandidatesPayload {
         val (clientMutationId, ids) = input
 
@@ -227,7 +227,7 @@ class ChapterRevisionMutation {
      *
      * A revision that is no longer the active one is left alone.
      */
-    @RequireAuth
+    @RequireArchiveOwner
     fun retryChapterRevisionPublications(input: RetryChapterRevisionPublicationsInput): RetryChapterRevisionPublicationsPayload {
         val (clientMutationId, ids) = input
 
@@ -252,7 +252,7 @@ class ChapterRevisionMutation {
      * An already pruned revision is left alone: its payload is gone for good, so it can only come back
      * by being acquired again.
      */
-    @RequireAuth
+    @RequireArchiveOwner
     fun retryChapterRevisionPrunings(input: RetryChapterRevisionPruningsInput): RetryChapterRevisionPruningsPayload {
         val (clientMutationId, ids) = input
 

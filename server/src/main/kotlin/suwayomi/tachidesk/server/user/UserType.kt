@@ -20,6 +20,13 @@ const val SERVER_TOKEN_COOKIE: String = "suwayomi-server-token"
 sealed class UserType {
     class Admin(
         val id: Int,
+        val roles: List<UserRole> = listOf(UserRole.ADMIN),
+    ) : UserType()
+
+    class User(
+        val id: Int,
+        val permissions: List<UserPermission>,
+        val roles: List<UserRole> = listOf(UserRole.USER),
     ) : UserType()
 
     data object Visitor : UserType()
@@ -28,6 +35,7 @@ sealed class UserType {
 fun UserType.requireUser(): Int =
     when (this) {
         is UserType.Admin -> id
+        is UserType.User -> id
         UserType.Visitor -> throw UnauthorizedException()
     }
 
@@ -45,9 +53,13 @@ fun UserType.requireUserWithBasicFallback(ctx: Context): Int =
             ctx.header("WWW-Authenticate", "Basic")
             throw UnauthorizedException()
         }
+
+        is UserType.User -> {
+            id
+        }
     }
 
-fun getUserFromToken(token: String?): UserType {
+suspend fun getUserFromToken(token: String?): UserType {
     if (serverConfig.authMode.value != AuthMode.UI_LOGIN) {
         return UserType.Admin(1)
     }
@@ -67,7 +79,24 @@ fun getTokenFromContext(ctx: Context): String? {
     return authentication?.substringAfter("Bearer ") ?: ctx.queryParam("token")
 }
 
-fun getUserFromContext(ctx: Context): UserType {
+fun UserType.requirePermissions(vararg permissions: UserPermission) {
+    when (this) {
+        is UserType.Admin -> {}
+
+        is UserType.User -> {
+            val userPermissions = this.permissions
+            if (!permissions.all { it in userPermissions }) {
+                throw ForbiddenException()
+            }
+        }
+
+        UserType.Visitor -> {
+            throw UnauthorizedException()
+        }
+    }
+}
+
+suspend fun getUserFromContext(ctx: Context): UserType {
     fun cookieValid(): Boolean {
         val username = ctx.sessionAttribute<String>("logged-in") ?: return false
         return username == serverConfig.authUsername.value
@@ -95,7 +124,7 @@ fun getUserFromContext(ctx: Context): UserType {
  * [acceptCookie] is false where the cookie must not be enough on its own, because a browser
  * attaches cookies to a handshake made from any origin.
  */
-fun getUserFromWsContext(
+suspend fun getUserFromWsContext(
     ctx: WsConnectContext,
     acceptCookie: Boolean = true,
 ): UserType {

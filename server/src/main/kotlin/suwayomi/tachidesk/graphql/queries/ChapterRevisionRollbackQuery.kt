@@ -16,7 +16,7 @@ import org.jetbrains.exposed.v1.core.less
 import org.jetbrains.exposed.v1.jdbc.andWhere
 import org.jetbrains.exposed.v1.jdbc.selectAll
 import org.jetbrains.exposed.v1.jdbc.transactions.transaction
-import suwayomi.tachidesk.graphql.directives.RequireAuth
+import suwayomi.tachidesk.graphql.directives.RequireArchiveOwner
 import suwayomi.tachidesk.graphql.server.primitives.Cursor
 import suwayomi.tachidesk.graphql.server.primitives.Order
 import suwayomi.tachidesk.graphql.server.primitives.OrderBy
@@ -56,7 +56,7 @@ class ChapterRevisionRollbackQuery {
     ) : Order<ChapterRevisionRollbackOrderBy>
 
     /** Every decision of this server, newest first by default, optionally narrowed to one identity. */
-    @RequireAuth
+    @RequireArchiveOwner
     fun chapterRevisionRollbacks(
         chapterKey: String? = null,
         order: List<ChapterRevisionRollbackOrder>? = null,

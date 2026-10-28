@@ -144,6 +144,7 @@ class MangaAcceptedRevisionRetentionTest : ApplicationTest() {
         retention: Int,
     ): Int {
         BackupMangaHandler.restore(
+            1,
             BackupManga(
                 source = 42,
                 url = url,
@@ -191,7 +192,7 @@ class MangaAcceptedRevisionRetentionTest : ApplicationTest() {
 
         val mangaId = seedRetention("/r", 0)
 
-        val exported = BackupMangaHandler.backup(backupFlags).single { it.url == "/r" }
+        val exported = BackupMangaHandler.backup(1, backupFlags).single { it.url == "/r" }
         assertEquals(0, exported.acceptedRevisionRetention)
         assertTrue(exported.acceptedRevisionRetentionPresent, "an export always marks the field as authoritative")
         assertEquals(0, storedOverride(mangaId))
@@ -203,6 +204,7 @@ class MangaAcceptedRevisionRetentionTest : ApplicationTest() {
 
         // an old backup that carries a value but not the marker is still a legacy backup
         BackupMangaHandler.restore(
+            1,
             BackupManga(source = 42, url = "/r", title = "Manga", acceptedRevisionRetention = 2),
             emptyMap(),
             emptyMap(),
@@ -214,6 +216,7 @@ class MangaAcceptedRevisionRetentionTest : ApplicationTest() {
 
         // an old backup without the field at all is the same case
         BackupMangaHandler.restore(
+            1,
             BackupManga(source = 42, url = "/r", title = "Manga"),
             emptyMap(),
             emptyMap(),
@@ -224,6 +227,7 @@ class MangaAcceptedRevisionRetentionTest : ApplicationTest() {
 
         // an out-of-range value marked as authoritative is still ignored defensively
         BackupMangaHandler.restore(
+            1,
             BackupManga(
                 source = 42,
                 url = "/r",
@@ -244,6 +248,7 @@ class MangaAcceptedRevisionRetentionTest : ApplicationTest() {
         val mangaId = seedRetention("/r", 5)
 
         BackupMangaHandler.restore(
+            1,
             BackupManga(source = 42, url = "/r", title = "Manga", acceptedRevisionRetentionPresent = true),
             emptyMap(),
             emptyMap(),

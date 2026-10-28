@@ -7,7 +7,7 @@ package suwayomi.tachidesk.graphql.mutations
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import suwayomi.tachidesk.graphql.directives.RequireAuth
+import suwayomi.tachidesk.graphql.directives.RequireArchiveOwner
 import suwayomi.tachidesk.graphql.types.BackupRestoreJobType
 import suwayomi.tachidesk.manga.impl.backup.proto.BackupRestoreExecutor
 import suwayomi.tachidesk.manga.impl.backup.proto.BackupRestoreJob
@@ -36,8 +36,10 @@ class BackupRestoreMutation {
      * The series the previous attempt already applied are kept: the retry continues from the recorded
      * position instead of importing the library again.
      */
-    @RequireAuth
-    fun retryBackupRestore(input: BackupRestoreJobInput): BackupRestoreJobPayload {
+    @RequireArchiveOwner
+    fun retryBackupRestore(
+        input: BackupRestoreJobInput,
+    ): BackupRestoreJobPayload {
         val job =
             BackupRestoreJob.get(input.restoreId)
                 ?: return failure(input, "no backup restore with id ${input.restoreId}")
@@ -55,8 +57,10 @@ class BackupRestoreMutation {
     }
 
     /** Abandons a restore. A running one stops at its next series boundary. */
-    @RequireAuth
-    fun cancelBackupRestore(input: BackupRestoreJobInput): BackupRestoreJobPayload {
+    @RequireArchiveOwner
+    fun cancelBackupRestore(
+        input: BackupRestoreJobInput,
+    ): BackupRestoreJobPayload {
         val job =
             BackupRestoreJob.get(input.restoreId)
                 ?: return failure(input, "no backup restore with id ${input.restoreId}")
@@ -75,8 +79,10 @@ class BackupRestoreMutation {
      * was cancelled, and a handoff that is blocked are all cases where the payload is the only way to
      * continue.
      */
-    @RequireAuth
-    fun cleanupBackupRestore(input: BackupRestoreJobInput): BackupRestoreJobPayload {
+    @RequireArchiveOwner
+    fun cleanupBackupRestore(
+        input: BackupRestoreJobInput,
+    ): BackupRestoreJobPayload {
         val job =
             BackupRestoreJob.get(input.restoreId)
                 ?: return failure(input, "no backup restore with id ${input.restoreId}")
@@ -102,8 +108,10 @@ class BackupRestoreMutation {
      * The import is never repeated: this only retries the bootstrap that the previous attempt could not
      * start because another run was active.
      */
-    @RequireAuth
-    fun retryBackupRestoreHandoff(input: BackupRestoreJobInput): BackupRestoreJobPayload {
+    @RequireArchiveOwner
+    fun retryBackupRestoreHandoff(
+        input: BackupRestoreJobInput,
+    ): BackupRestoreJobPayload {
         val job =
             BackupRestoreJob.get(input.restoreId)
                 ?: return failure(input, "no backup restore with id ${input.restoreId}")

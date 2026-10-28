@@ -7,7 +7,7 @@ package suwayomi.tachidesk.graphql.mutations
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import suwayomi.tachidesk.graphql.directives.RequireAuth
+import suwayomi.tachidesk.graphql.directives.RequireArchiveOwner
 import suwayomi.tachidesk.graphql.types.ChapterIntegrityAuditSessionType
 import suwayomi.tachidesk.manga.impl.ChapterRevisionIntegrityAudit
 import suwayomi.tachidesk.manga.impl.ChapterRevisionIntegrityAuditExecutor
@@ -39,7 +39,7 @@ class ChapterIntegrityAuditMutation {
         val error: String?,
     )
 
-    @RequireAuth
+    @RequireArchiveOwner
     fun startChapterIntegrityAudit(input: StartChapterIntegrityAuditInput): StartChapterIntegrityAuditPayload {
         // A scheduled audit is the scheduler's own business: letting a client claim that kind would make
         // the persisted schedule and the run disagree about who started what.
@@ -126,7 +126,7 @@ class ChapterIntegrityAuditMutation {
     )
 
     /** Stops claiming revisions. One already being checked is allowed to finish. */
-    @RequireAuth
+    @RequireArchiveOwner
     fun pauseChapterIntegrityAudit(input: ChapterIntegrityAuditSessionInput): ChapterIntegrityAuditSessionPayload {
         val session = ChapterRevisionIntegrityAudit.pause(input.sessionId)
         return ChapterIntegrityAuditSessionPayload(
@@ -136,7 +136,7 @@ class ChapterIntegrityAuditMutation {
         )
     }
 
-    @RequireAuth
+    @RequireArchiveOwner
     fun resumeChapterIntegrityAudit(input: ChapterIntegrityAuditSessionInput): ChapterIntegrityAuditSessionPayload {
         val session = ChapterRevisionIntegrityAudit.resume(input.sessionId)
         if (session != null) {
@@ -151,7 +151,7 @@ class ChapterIntegrityAuditMutation {
     }
 
     /** Abandons a run. Every unchecked revision is recorded as skipped, never as checked. */
-    @RequireAuth
+    @RequireArchiveOwner
     fun cancelChapterIntegrityAudit(input: ChapterIntegrityAuditSessionInput): ChapterIntegrityAuditSessionPayload {
         val session = ChapterRevisionIntegrityAudit.cancel(input.sessionId)
         return ChapterIntegrityAuditSessionPayload(
@@ -175,7 +175,7 @@ class ChapterIntegrityAuditMutation {
         val error: String?,
     )
 
-    @RequireAuth
+    @RequireArchiveOwner
     fun retryChapterIntegrityAuditItems(input: RetryChapterIntegrityAuditItemsInput): RetryChapterIntegrityAuditItemsPayload =
         when (val outcome = ChapterRevisionIntegrityAudit.retry(input.sessionId, input.itemIds)) {
             is ChapterRevisionIntegrityAudit.RetryOutcome.Retried -> {

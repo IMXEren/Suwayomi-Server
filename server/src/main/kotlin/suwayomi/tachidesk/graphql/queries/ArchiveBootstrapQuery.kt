@@ -17,7 +17,7 @@ import org.jetbrains.exposed.v1.core.less
 import org.jetbrains.exposed.v1.jdbc.andWhere
 import org.jetbrains.exposed.v1.jdbc.selectAll
 import org.jetbrains.exposed.v1.jdbc.transactions.transaction
-import suwayomi.tachidesk.graphql.directives.RequireAuth
+import suwayomi.tachidesk.graphql.directives.RequireArchiveOwner
 import suwayomi.tachidesk.graphql.server.primitives.Cursor
 import suwayomi.tachidesk.graphql.server.primitives.Order
 import suwayomi.tachidesk.graphql.server.primitives.OrderBy
@@ -120,7 +120,7 @@ class ArchiveBootstrapQuery {
     ) : Order<ArchiveBootstrapSessionOrderBy>
 
     /** All runs of this server, newest first by default. */
-    @RequireAuth
+    @RequireArchiveOwner
     fun archiveBootstrapSessions(
         state: ArchiveBootstrapState? = null,
         order: List<ArchiveBootstrapSessionOrder>? = null,
@@ -190,21 +190,21 @@ class ArchiveBootstrapQuery {
         )
     }
 
-    @RequireAuth
+    @RequireArchiveOwner
     fun archiveBootstrapSession(id: Int): ArchiveBootstrapSessionType? =
         ArchiveBootstrap.getSession(id)?.let { ArchiveBootstrapSessionType(it) }
 
     /** The run that is still running or paused; there is at most one. */
-    @RequireAuth
+    @RequireArchiveOwner
     fun archiveBootstrapActiveSession(): ArchiveBootstrapSessionType? =
         ArchiveBootstrap.getActiveSession()?.let { ArchiveBootstrapSessionType(it) }
 
-    @RequireAuth
+    @RequireArchiveOwner
     fun archiveBootstrapLatestSession(): ArchiveBootstrapSessionType? =
         ArchiveBootstrap.getLatestSession()?.let { ArchiveBootstrapSessionType(it) }
 
     /** The series of one run, in the order the worker will visit them. */
-    @RequireAuth
+    @RequireArchiveOwner
     fun archiveBootstrapItems(
         sessionId: Int,
         state: ArchiveBootstrapItemState? = null,
@@ -270,7 +270,7 @@ class ArchiveBootstrapQuery {
         )
     }
 
-    @RequireAuth
+    @RequireArchiveOwner
     fun archiveBootstrapProgress(sessionId: Int): ArchiveBootstrapProgressType =
         ArchiveBootstrapProgressType(ArchiveBootstrap.progress(sessionId))
 
@@ -280,7 +280,7 @@ class ArchiveBootstrapQuery {
      * Reported per source so a missing extension is visible as one actionable item rather than as
      * hundreds of individual series.
      */
-    @RequireAuth
+    @RequireArchiveOwner
     fun archiveBootstrapUnresolvedSources(
         sessionId: Int,
         sampleSize: Int = 5,
@@ -290,7 +290,7 @@ class ArchiveBootstrapQuery {
             .map { ArchiveBootstrapUnresolvedSourceType(it) }
 
     /** The policy that applies to a series, given its categories. */
-    @RequireAuth
+    @RequireArchiveOwner
     fun archiveBootstrapEffectivePolicy(
         sessionId: Int,
         mangaId: Int,

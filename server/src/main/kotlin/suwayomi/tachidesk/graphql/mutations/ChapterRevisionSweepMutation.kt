@@ -7,7 +7,7 @@ package suwayomi.tachidesk.graphql.mutations
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import suwayomi.tachidesk.graphql.directives.RequireAuth
+import suwayomi.tachidesk.graphql.directives.RequireArchiveOwner
 import suwayomi.tachidesk.graphql.types.ChapterRevisionSweepSessionType
 import suwayomi.tachidesk.manga.impl.ChapterRevisionSweep
 import suwayomi.tachidesk.manga.impl.ChapterRevisionSweepExecutor
@@ -36,7 +36,7 @@ class ChapterRevisionSweepMutation {
         val error: String?,
     )
 
-    @RequireAuth
+    @RequireArchiveOwner
     fun startChapterRevisionSweep(input: StartChapterRevisionSweepInput): StartChapterRevisionSweepPayload {
         // A scheduled sweep is the scheduler's own business: letting a client claim that kind would
         // make the persisted schedule and the run disagree about who started what.
@@ -115,7 +115,7 @@ class ChapterRevisionSweepMutation {
     )
 
     /** Stops claiming chapters. One already being processed is allowed to finish. */
-    @RequireAuth
+    @RequireArchiveOwner
     fun pauseChapterRevisionSweep(input: ChapterRevisionSweepSessionInput): ChapterRevisionSweepSessionPayload {
         val session = ChapterRevisionSweep.pause(input.sessionId)
         return ChapterRevisionSweepSessionPayload(
@@ -126,7 +126,7 @@ class ChapterRevisionSweepMutation {
         )
     }
 
-    @RequireAuth
+    @RequireArchiveOwner
     fun resumeChapterRevisionSweep(input: ChapterRevisionSweepSessionInput): ChapterRevisionSweepSessionPayload {
         val session = ChapterRevisionSweep.resume(input.sessionId)
         if (session != null) {
@@ -142,7 +142,7 @@ class ChapterRevisionSweepMutation {
     }
 
     /** Abandons a run. Every unfinished chapter is recorded as cancelled. */
-    @RequireAuth
+    @RequireArchiveOwner
     fun cancelChapterRevisionSweep(input: ChapterRevisionSweepSessionInput): ChapterRevisionSweepSessionPayload {
         val session = ChapterRevisionSweep.cancel(input.sessionId)
         return ChapterRevisionSweepSessionPayload(
@@ -167,7 +167,7 @@ class ChapterRevisionSweepMutation {
         val error: String?,
     )
 
-    @RequireAuth
+    @RequireArchiveOwner
     fun retryChapterRevisionSweepItems(input: RetryChapterRevisionSweepItemsInput): RetryChapterRevisionSweepItemsPayload =
         when (val outcome = ChapterRevisionSweep.retry(input.sessionId, input.itemIds)) {
             is ChapterRevisionSweep.RetryOutcome.Retried -> {

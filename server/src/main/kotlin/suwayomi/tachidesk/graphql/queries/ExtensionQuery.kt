@@ -8,6 +8,7 @@
 package suwayomi.tachidesk.graphql.queries
 
 import com.expediagroup.graphql.generator.annotations.GraphQLDeprecated
+import com.expediagroup.graphql.generator.annotations.GraphQLIgnore
 import com.expediagroup.graphql.server.extensions.getValueFromDataLoader
 import eu.kanade.tachiyomi.source.local.LocalSource
 import graphql.schema.DataFetchingEnvironment
@@ -36,6 +37,7 @@ import suwayomi.tachidesk.graphql.server.primitives.Cursor
 import suwayomi.tachidesk.graphql.server.primitives.Order
 import suwayomi.tachidesk.graphql.server.primitives.OrderBy
 import suwayomi.tachidesk.graphql.server.primitives.PageInfo
+import suwayomi.tachidesk.graphql.server.primitives.PaginationNeeds
 import suwayomi.tachidesk.graphql.server.primitives.QueryResults
 import suwayomi.tachidesk.graphql.server.primitives.applyBeforeAfter
 import suwayomi.tachidesk.graphql.server.primitives.applySortAndGetPaginationInfo
@@ -45,6 +47,7 @@ import suwayomi.tachidesk.graphql.types.ExtensionNodeList
 import suwayomi.tachidesk.graphql.types.ExtensionType
 import suwayomi.tachidesk.manga.model.dataclass.ContentWarning
 import suwayomi.tachidesk.manga.model.table.ExtensionTable
+import suwayomi.tachidesk.server.user.UserPermission
 import java.util.concurrent.CompletableFuture
 
 class ExtensionQuery {
@@ -52,7 +55,17 @@ class ExtensionQuery {
     fun extension(
         dataFetchingEnvironment: DataFetchingEnvironment,
         pkgName: String,
-    ): CompletableFuture<ExtensionType> = dataFetchingEnvironment.getValueFromDataLoader("ExtensionDataLoader", pkgName)
+        @GraphQLIgnore
+        permissions: List<UserPermission>,
+    ): CompletableFuture<ExtensionType> =
+        dataFetchingEnvironment.getValueFromDataLoader<String, ExtensionType>("ExtensionDataLoader", pkgName).thenApply { extension ->
+            // if (extension != null && extension.contentWarning >= ContentWarning.MIXED &&
+            //     !permissions.hasPermission(UserPermission.ACCESS_NSFW)
+            // ) {
+            //     throw ForbiddenException()
+            // }
+            extension
+        }
 
     enum class ExtensionOrderBy(
         override val column: Column<*>,
@@ -115,8 +128,8 @@ class ExtensionQuery {
         val isInstalled: Boolean? = null,
         val hasUpdate: Boolean? = null,
         val isObsolete: Boolean? = null,
-    ) : HasGetOp {
-        override fun getOp(): Op<Boolean>? {
+    ) : HasGetOp<Any?> {
+        override fun getOp(value: Any?): Op<Boolean>? {
             val opAnd = OpAnd()
             opAnd.eq(storeIndexUrl, ExtensionTable.storeIndexUrl)
             opAnd.eq(repo, ExtensionTable.storeIndexUrl)
@@ -168,8 +181,8 @@ class ExtensionQuery {
         override val and: List<ExtensionFilter>? = null,
         override val or: List<ExtensionFilter>? = null,
         override val not: ExtensionFilter? = null,
-    ) : Filter<ExtensionFilter> {
-        override fun getOpList(): List<Op<Boolean>> =
+    ) : Filter<ExtensionFilter, Any?> {
+        override fun getOpList(value: Any?): List<Op<Boolean>> =
             listOfNotNull(
                 andFilterWithCompareString(ExtensionTable.storeIndexUrl, storeIndexUrl),
                 andFilterWithCompareString(ExtensionTable.storeIndexUrl, repo),
@@ -192,6 +205,9 @@ class ExtensionQuery {
 
     @RequireAuth
     fun extensions(
+        @GraphQLIgnore
+        permissions: List<UserPermission>,
+        dataFetchingEnvironment: DataFetchingEnvironment,
         condition: ExtensionCondition? = null,
         filter: ExtensionFilter? = null,
         @GraphQLDeprecated(
@@ -217,14 +233,21 @@ class ExtensionQuery {
 
                 res.adjustWhere { ExtensionTable.name neq LocalSource.EXTENSION_NAME }
 
-                res.applyOps(condition, filter)
+                res.applyOps(null, condition, filter)
+
+                // hide NSFW extensions from users without the NSFW permission
+                // if (!permissions.hasPermission(UserPermission.ACCESS_NSFW)) {
+                //     res.andWhere { ExtensionTable.contentWarning less ContentWarning.MIXED.ordinal }
+                // }
 
                 val baseSort = listOf(ExtensionOrder(ExtensionOrderBy.PKG_NAME, SortOrder.ASC))
                 val deprecatedSort = listOfNotNull(orderBy?.let { ExtensionOrder(orderBy, orderByType) })
                 val actualSort = (order.orEmpty() + deprecatedSort + baseSort)
 
                 val (total, firstResult, lastResult) =
-                    res.applySortAndGetPaginationInfo(actualSort, before, last) { it?.get(ExtensionTable.pkgName) }
+                    res.applySortAndGetPaginationInfo(actualSort, before, last, PaginationNeeds.of(dataFetchingEnvironment)) {
+                        it?.get(ExtensionTable.pkgName)
+                    }
 
                 res.applyBeforeAfter(
                     before = before,

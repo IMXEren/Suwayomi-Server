@@ -7,6 +7,7 @@
 
 package suwayomi.tachidesk.graphql.types
 
+import com.expediagroup.graphql.generator.annotations.GraphQLDeprecated
 import com.expediagroup.graphql.generator.annotations.GraphQLDescription
 import com.expediagroup.graphql.generator.annotations.GraphQLIgnore
 import com.expediagroup.graphql.server.extensions.getValueFromDataLoader
@@ -14,6 +15,7 @@ import graphql.schema.DataFetchingEnvironment
 import org.jetbrains.exposed.v1.core.eq
 import org.jetbrains.exposed.v1.jdbc.selectAll
 import org.jetbrains.exposed.v1.jdbc.transactions.transaction
+import suwayomi.tachidesk.graphql.server.getAttribute
 import suwayomi.tachidesk.graphql.server.primitives.Cursor
 import suwayomi.tachidesk.graphql.server.primitives.Edge
 import suwayomi.tachidesk.graphql.server.primitives.Node
@@ -26,6 +28,9 @@ import suwayomi.tachidesk.manga.impl.download.model.DownloadUpdateType
 import suwayomi.tachidesk.manga.impl.download.model.DownloadUpdates
 import suwayomi.tachidesk.manga.impl.download.model.Status
 import suwayomi.tachidesk.manga.model.table.ChapterTable
+import suwayomi.tachidesk.manga.model.table.getWithUserData
+import suwayomi.tachidesk.server.JavalinSetup
+import suwayomi.tachidesk.server.user.requireUser
 import java.util.concurrent.CompletableFuture
 import suwayomi.tachidesk.manga.impl.download.model.DownloadState as OtherDownloadState
 
@@ -52,20 +57,20 @@ data class DownloadUpdates(
     val updates: List<suwayomi.tachidesk.graphql.types.DownloadUpdate>,
     @GraphQLDescription("The current download queue at the time of sending initial message. Is null for all following messages")
     val initial: List<DownloadType>?,
+    @GraphQLDeprecated("Removed - has no effect anymore, is always false")
     @GraphQLDescription(
         "Indicates whether updates have been omitted based on the \"maxUpdates\" subscription variable. " +
             "In case updates have been omitted, the \"downloadStatus\" query should be re-fetched.",
     )
-    val omittedUpdates: Boolean,
+    val omittedUpdates: Boolean = false,
 ) {
-    constructor(downloadUpdates: DownloadUpdates, omittedUpdates: Boolean) : this(
+    constructor(downloadUpdates: DownloadUpdates) : this(
         when (downloadUpdates.status) {
             Status.Stopped -> DownloaderState.STOPPED
             Status.Started -> DownloaderState.STARTED
         },
         downloadUpdates.updates.map { DownloadUpdate(it) },
         downloadUpdates.initial?.mapIndexed { index, item -> DownloadType(item, index) },
-        omittedUpdates,
     )
 }
 
@@ -120,8 +125,16 @@ class DownloadType(
 
             ChapterType.clearCacheFor(chapterId, mangaId, dataFetchingEnvironment)
 
+            val userId = dataFetchingEnvironment.graphQlContext.getAttribute(JavalinSetup.Attribute.TachideskUser).requireUser()
+
             return@thenApply transaction {
-                val resultRow = ChapterTable.selectAll().where { ChapterTable.id eq chapterId }.firstOrNull() ?: return@transaction it
+                val resultRow =
+                    ChapterTable
+                        .getWithUserData(userId)
+                        .selectAll()
+                        .where { ChapterTable.id eq chapterId }
+                        .firstOrNull()
+                        ?: return@transaction it
 
                 ChapterType(resultRow)
             }

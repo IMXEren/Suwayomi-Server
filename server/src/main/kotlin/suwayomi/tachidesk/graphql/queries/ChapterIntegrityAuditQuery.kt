@@ -15,7 +15,7 @@ import org.jetbrains.exposed.v1.core.less
 import org.jetbrains.exposed.v1.jdbc.andWhere
 import org.jetbrains.exposed.v1.jdbc.selectAll
 import org.jetbrains.exposed.v1.jdbc.transactions.transaction
-import suwayomi.tachidesk.graphql.directives.RequireAuth
+import suwayomi.tachidesk.graphql.directives.RequireArchiveOwner
 import suwayomi.tachidesk.graphql.server.primitives.Cursor
 import suwayomi.tachidesk.graphql.server.primitives.Order
 import suwayomi.tachidesk.graphql.server.primitives.OrderBy
@@ -119,7 +119,7 @@ class ChapterIntegrityAuditQuery {
     ) : Order<ChapterIntegrityAuditSessionOrderBy>
 
     /** All runs of this server, newest first by default. */
-    @RequireAuth
+    @RequireArchiveOwner
     fun chapterIntegrityAuditSessions(
         state: ChapterIntegrityAuditSessionState? = null,
         order: List<ChapterIntegrityAuditSessionOrder>? = null,
@@ -197,26 +197,26 @@ class ChapterIntegrityAuditQuery {
         )
     }
 
-    @RequireAuth
+    @RequireArchiveOwner
     fun chapterIntegrityAuditSession(id: Int): ChapterIntegrityAuditSessionType? =
         ChapterRevisionIntegrityAudit.getSession(id)?.let { ChapterIntegrityAuditSessionType(it) }
 
     /** The run that is still running or paused; there is at most one. */
-    @RequireAuth
+    @RequireArchiveOwner
     fun chapterIntegrityAuditActiveSession(): ChapterIntegrityAuditSessionType? =
         ChapterRevisionIntegrityAudit.getActiveSession()?.let { ChapterIntegrityAuditSessionType(it) }
 
-    @RequireAuth
+    @RequireArchiveOwner
     fun chapterIntegrityAuditLatestSession(): ChapterIntegrityAuditSessionType? =
         ChapterRevisionIntegrityAudit.getLatestSession()?.let { ChapterIntegrityAuditSessionType(it) }
 
     /** When the next automatic audit is due, or null while no schedule exists yet. */
-    @RequireAuth
+    @RequireArchiveOwner
     fun chapterIntegrityAuditSchedule(): ChapterIntegrityAuditScheduleType? =
         ChapterRevisionIntegrityAudit.getSchedule()?.let { ChapterIntegrityAuditScheduleType(it) }
 
     /** The revisions of one run, in the order the worker will visit them. */
-    @RequireAuth
+    @RequireArchiveOwner
     fun chapterIntegrityAuditItems(
         sessionId: Int,
         state: ChapterIntegrityAuditItemState? = null,
@@ -286,7 +286,7 @@ class ChapterIntegrityAuditQuery {
         )
     }
 
-    @RequireAuth
+    @RequireArchiveOwner
     fun chapterIntegrityAuditProgress(sessionId: Int): ChapterIntegrityAuditProgressType =
         ChapterIntegrityAuditProgressType(ChapterRevisionIntegrityAudit.progress(sessionId))
 }

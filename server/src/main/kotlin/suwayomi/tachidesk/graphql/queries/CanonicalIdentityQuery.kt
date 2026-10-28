@@ -22,7 +22,7 @@ import org.jetbrains.exposed.v1.core.neq
 import org.jetbrains.exposed.v1.jdbc.andWhere
 import org.jetbrains.exposed.v1.jdbc.selectAll
 import org.jetbrains.exposed.v1.jdbc.transactions.transaction
-import suwayomi.tachidesk.graphql.directives.RequireAuth
+import suwayomi.tachidesk.graphql.directives.RequireArchiveOwner
 import suwayomi.tachidesk.graphql.server.primitives.Cursor
 import suwayomi.tachidesk.graphql.server.primitives.Order
 import suwayomi.tachidesk.graphql.server.primitives.OrderBy
@@ -101,7 +101,7 @@ class CanonicalIdentityQuery {
      * The default order is `(ID ASC)`, which is the only order that cannot change under a concurrent
      * create and therefore the only one that keeps a cursor stable without a tie-break.
      */
-    @RequireAuth
+    @RequireArchiveOwner
     fun canonicalWorks(
         titleContains: String? = null,
         order: List<CanonicalWorkOrder>? = null,
@@ -162,15 +162,15 @@ class CanonicalIdentityQuery {
         )
     }
 
-    @RequireAuth
+    @RequireArchiveOwner
     fun canonicalWork(workKey: String): CanonicalWorkType? = CanonicalIdentity.getWorkByKey(workKey)?.let { CanonicalWorkType(it) }
 
     /** The work a manga is bound to, or null while it is unbound. */
-    @RequireAuth
+    @RequireArchiveOwner
     fun canonicalWorkForManga(mangaId: Int): CanonicalWorkType? =
         CanonicalIdentity.getBindingForManga(mangaId)?.let { CanonicalIdentity.getWorkById(it.workId) }?.let { CanonicalWorkType(it) }
 
-    @RequireAuth
+    @RequireArchiveOwner
     fun canonicalBindingForManga(mangaId: Int): CanonicalSourceBindingType? =
         CanonicalIdentity.getBindingForManga(mangaId)?.let { CanonicalSourceBindingType(it) }
 
@@ -181,7 +181,7 @@ class CanonicalIdentityQuery {
      * list rather than a cursor page, and the ordering is the same one the mutation paths reason
      * about.
      */
-    @RequireAuth
+    @RequireArchiveOwner
     fun canonicalBindingsForWork(workId: Int): CanonicalSourceBindingNodeList =
         CanonicalSourceBindingNodeList.of(CanonicalIdentity.getBindingsForWork(workId).map { CanonicalSourceBindingType(it) })
 
@@ -191,7 +191,7 @@ class CanonicalIdentityQuery {
      * Explicitly reports that the duplicate policy is advisory, so a client never has to infer it from
      * documentation.
      */
-    @RequireAuth
+    @RequireArchiveOwner
     fun canonicalIdentityStatus(): CanonicalIdentityStatusType =
         transaction {
             fun countBindings(condition: Op<Boolean>): Int =

@@ -7,7 +7,7 @@ package suwayomi.tachidesk.graphql.mutations
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import suwayomi.tachidesk.graphql.directives.RequireAuth
+import suwayomi.tachidesk.graphql.directives.RequireArchiveOwner
 import suwayomi.tachidesk.graphql.types.ChapterRevisionType
 import suwayomi.tachidesk.manga.impl.ChapterRevision
 import suwayomi.tachidesk.manga.impl.ChapterRevisionPublicationExecutor
@@ -38,7 +38,7 @@ class ChapterRevisionRollbackMutation {
         val error: String?,
     )
 
-    @RequireAuth
+    @RequireArchiveOwner
     fun rollbackChapterRevision(input: RollbackChapterRevisionInput): RollbackChapterRevisionPayload {
         val outcome = ChapterRevision.rollbackChapterRevision(input.revisionId)
 

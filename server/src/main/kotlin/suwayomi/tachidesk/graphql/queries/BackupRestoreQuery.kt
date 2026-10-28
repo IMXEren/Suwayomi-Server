@@ -24,8 +24,8 @@ import suwayomi.tachidesk.manga.model.table.toDataClass
 /**
  * Read access to durable `.tachibk` restores.
  *
-     * Durable jobs belong to the built-in admin's shared archive; other users' restores use upstream's
-     * per-user in-memory status instead.
+ * Durable jobs belong to the built-in admin's shared archive; other users' restores use upstream's
+ * per-user in-memory status instead.
  */
 class BackupRestoreQuery {
     /** Bounded because a job reveals the shape of a library and no client needs thousands at once. */
@@ -35,9 +35,9 @@ class BackupRestoreQuery {
     @RequireArchiveOwner
     fun backupRestoreJobs(
         state: BackupRestoreJobState? = null,
-        limit: Int = 20,
-    ): List<BackupRestoreJobType> {
-        return transaction {
+        limit: Int? = null,
+    ): List<BackupRestoreJobType> =
+        transaction {
             val query = BackupRestoreJobTable.selectAll()
             if (state != null) {
                 query.andWhere { BackupRestoreJobTable.state eq state.name }
@@ -45,10 +45,9 @@ class BackupRestoreQuery {
 
             query
                 .orderBy(BackupRestoreJobTable.id to SortOrder.DESC)
-                .limit(limit.coerceIn(1, maxPageSize))
+                .limit((limit ?: 20).coerceIn(1, maxPageSize))
                 .map { BackupRestoreJobType(BackupRestoreJobTable.toDataClass(it)) }
         }
-    }
 
     /**
      * One restore by the id its upload returned.
@@ -57,17 +56,14 @@ class BackupRestoreQuery {
      * durable view without discovering a second identifier.
      */
     @RequireArchiveOwner
-    fun backupRestoreJob(
-        restoreId: String,
-    ): BackupRestoreJobType? {
-        return transaction {
+    fun backupRestoreJob(restoreId: String): BackupRestoreJobType? =
+        transaction {
             BackupRestoreJobTable
                 .selectAll()
                 .where { BackupRestoreJobTable.restoreId eq restoreId }
                 .firstOrNull()
                 ?.let { BackupRestoreJobType(BackupRestoreJobTable.toDataClass(it)) }
         }
-    }
 
     /**
      * What a restore could not apply, oldest first.
@@ -79,9 +75,9 @@ class BackupRestoreQuery {
     fun backupRestoreAudits(
         restoreId: String,
         level: BackupRestoreAuditLevel? = null,
-        limit: Int = 100,
-    ): List<BackupRestoreAuditType> {
-        return transaction {
+        limit: Int? = null,
+    ): List<BackupRestoreAuditType> =
+        transaction {
             val job =
                 BackupRestoreJobTable
                     .selectAll()
@@ -97,17 +93,14 @@ class BackupRestoreQuery {
 
             query
                 .orderBy(BackupRestoreJobAuditTable.id to SortOrder.ASC)
-                .limit(limit.coerceIn(1, maxPageSize))
+                .limit((limit ?: 100).coerceIn(1, maxPageSize))
                 .map { BackupRestoreAuditType(BackupRestoreJobAuditTable.toDataClass(it)) }
         }
-    }
 
     /** Counts of one restore's problems, split by level, without loading the rows. */
     @RequireArchiveOwner
-    fun backupRestoreErrorCounts(
-        restoreId: String,
-    ): BackupRestoreErrorCountsType? {
-        return transaction {
+    fun backupRestoreErrorCounts(restoreId: String): BackupRestoreErrorCountsType? =
+        transaction {
             val job =
                 BackupRestoreJobTable
                     .selectAll()
@@ -128,7 +121,6 @@ class BackupRestoreQuery {
                 missingSources = audits.count { it == BackupRestoreAuditLevel.MISSING_SOURCE.name },
             )
         }
-    }
 }
 
 /** How many of each kind of problem a restore recorded. */

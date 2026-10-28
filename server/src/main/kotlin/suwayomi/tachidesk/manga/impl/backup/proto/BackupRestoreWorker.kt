@@ -61,12 +61,12 @@ class BackupRestoreProcessor(
     private val decode: (BufferedSource) -> Backup = { source ->
         ProtoBackupImport.parser.decodeFromByteArray(Backup.serializer(), source.readByteArray())
     },
-    private val validate: (Backup) -> ValidationResult = { ProtoBackupValidator.validate(it) },
+    private val validate: (Backup) -> ValidationResult = { ProtoBackupValidator.validate(ARCHIVE_OWNER_ID, it) },
     private val restoreSettings: (Backup) -> Unit = { BackupSettingsHandler.restore(it.serverSettings, ARCHIVE_OWNER_ID) },
     private val restoreCategories: (Backup) -> Map<Int, Int> = { BackupCategoryHandler.restore(ARCHIVE_OWNER_ID, it.backupCategories) },
     private val restoreMeta: (Backup) -> Unit = { backup ->
         BackupGlobalMetaHandler.restore(ARCHIVE_OWNER_ID, backup.meta)
-        BackupSourceHandler.restore(backup.backupSources)
+        BackupSourceHandler.restore(ARCHIVE_OWNER_ID, backup.backupSources)
     },
     private val restoreSeries: (
         BackupManga,

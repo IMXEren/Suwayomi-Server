@@ -16,6 +16,7 @@ import io.javalin.websocket.WsMessageHandler
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
+import kotlinx.coroutines.runBlocking
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Protocol
@@ -420,15 +421,15 @@ class WebViewVncSocketAuthTest : ApplicationTest() {
         val configured = serverConfig.authMode.value
         try {
             serverConfig.authMode.value = AuthMode.UI_LOGIN
-            val token = Jwt.generateJwt().accessToken
+            val token = runBlocking { Jwt.generateJwt(1).accessToken }
 
             assertEquals(
                 UserType.Visitor,
-                getUserFromWsContext(handshake(token = null, cookie = token), acceptCookie = false),
+                runBlocking { getUserFromWsContext(handshake(token = null, cookie = token), acceptCookie = false) },
                 "the asset cookie must not be enough to open the socket",
             )
             assertTrue(
-                getUserFromWsContext(handshake(token = null, cookie = token)) is UserType.Admin,
+                runBlocking { getUserFromWsContext(handshake(token = null, cookie = token)) } is UserType.Admin,
                 "the other sockets keep accepting the cookie",
             )
         } finally {
@@ -441,7 +442,7 @@ class WebViewVncSocketAuthTest : ApplicationTest() {
         val configured = serverConfig.authMode.value
         try {
             serverConfig.authMode.value = AuthMode.UI_LOGIN
-            val token = Jwt.generateJwt().accessToken
+            val token = runBlocking { Jwt.generateJwt(1).accessToken }
             val config = mockk<WsConfig>()
             val onConnect = slot<WsConnectHandler>()
             every { config.onConnect(capture(onConnect)) } returns Unit
@@ -467,14 +468,14 @@ class WebViewVncSocketAuthTest : ApplicationTest() {
         val configured = serverConfig.authMode.value
         try {
             serverConfig.authMode.value = AuthMode.UI_LOGIN
-            val token = Jwt.generateJwt().accessToken
+            val token = runBlocking { Jwt.generateJwt(1).accessToken }
 
             assertTrue(
-                getUserFromWsContext(handshake(token = token, cookie = null), acceptCookie = false) is UserType.Admin,
+                runBlocking { getUserFromWsContext(handshake(token = token, cookie = null), acceptCookie = false) } is UserType.Admin,
             )
             assertEquals(
                 UserType.Visitor,
-                getUserFromWsContext(handshake(token = null, cookie = null), acceptCookie = false),
+                runBlocking { getUserFromWsContext(handshake(token = null, cookie = null), acceptCookie = false) },
                 "an unauthenticated handshake is still refused",
             )
         } finally {
@@ -588,7 +589,7 @@ class WebViewVncTabCloseTest : ApplicationTest() {
         every { ctx.header(Header.AUTHORIZATION) } returns null
         every { ctx.header("Sec-WebSocket-Protocol") } returns null
         every { ctx.cookie(SERVER_TOKEN_COOKIE) } returns null
-        every { ctx.queryParam("token") } returns Jwt.generateJwt().accessToken
+        every { ctx.queryParam("token") } returns runBlocking { Jwt.generateJwt(1).accessToken }
         every { ctx.queryParam("tab") } returns tabId
         every { ctx.sessionId() } returns sessionId
         socket.onConnect.handleConnect(ctx)

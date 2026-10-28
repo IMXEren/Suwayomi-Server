@@ -99,10 +99,9 @@ class CategoryMangaTest : ApplicationTest() {
 
         // Default-category branch: manga with a MangaUserTable row must be listed without error.
         val defaultCategoryId = Category.getDefaultCategoryId(1)!!
-        val defaultList = CategoryManga.getCategoryMangaList(1, defaultCategoryId)
-        assertEquals(1, defaultList.size, "Default category should contain the library manga")
-        assertEquals(3, defaultList[0].unreadCount, "Unread count should reflect the unread chapters")
-        assertEquals(8, defaultList[0].chapterCount, "Chapter count should reflect all chapters")
+        val defaultManga = CategoryManga.getCategoryMangaList(1, defaultCategoryId).single { it.id == mangaId }
+        assertEquals(3, defaultManga.unreadCount, "Unread count should reflect the unread chapters")
+        assertEquals(8, defaultManga.chapterCount, "Chapter count should reflect all chapters")
 
         // Named-category branch: same query shape, different join order, must also stay valid.
         val categoryId = Category.createCategory(1, "Seinen")

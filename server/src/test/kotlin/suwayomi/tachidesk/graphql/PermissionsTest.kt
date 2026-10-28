@@ -27,6 +27,8 @@ import org.junit.jupiter.api.BeforeEach
 import suwayomi.tachidesk.global.model.table.UserAccountTable
 import suwayomi.tachidesk.global.model.table.UserPermissionsTable
 import suwayomi.tachidesk.global.model.table.UserRolesTable
+import suwayomi.tachidesk.manga.impl.backup.proto.BackupRestoreLoop
+import suwayomi.tachidesk.manga.impl.backup.proto.BackupRestoreProcessor
 import suwayomi.tachidesk.manga.impl.backup.proto.ProtoBackupImport
 import suwayomi.tachidesk.manga.impl.backup.proto.models.Backup
 import suwayomi.tachidesk.manga.impl.backup.proto.models.BackupServerSettings
@@ -38,6 +40,7 @@ import suwayomi.tachidesk.manga.model.table.ChapterTable
 import suwayomi.tachidesk.manga.model.table.ExtensionTable
 import suwayomi.tachidesk.manga.model.table.MangaTable
 import suwayomi.tachidesk.manga.model.table.SourceTable
+import suwayomi.tachidesk.server.ApplicationDirs
 import suwayomi.tachidesk.server.serverConfig
 import suwayomi.tachidesk.server.settings.SettingsRegistry
 import suwayomi.tachidesk.server.user.UserPermission
@@ -47,6 +50,7 @@ import suwayomi.tachidesk.test.GraphQLTest
 import suwayomi.tachidesk.test.createChapters
 import suwayomi.tachidesk.test.createLibraryManga
 import java.io.ByteArrayInputStream
+import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -178,7 +182,16 @@ class PermissionsTest : GraphQLTest() {
         userId: Int,
     ) {
         val deadline = System.currentTimeMillis() + 30_000
+        val durableLoop =
+            if (userId == 1) {
+                BackupRestoreLoop(
+                    BackupRestoreProcessor(stagingRoot = { File(ApplicationDirs().archiveStagingRoot) }),
+                )
+            } else {
+                null
+            }
         while (System.currentTimeMillis() < deadline) {
+            durableLoop?.let { runBlocking { it.drainOnce() } }
             when (ProtoBackupImport.getRestoreState(restoreId, userId)) {
                 is ProtoBackupImport.BackupRestoreState.Success,
                 is ProtoBackupImport.BackupRestoreState.Failure,
@@ -1172,7 +1185,7 @@ class PermissionsTest : GraphQLTest() {
                 user = userWithPermissions(userId),
             )
         denied.assertHasError()
-        assertTrue(denied.errors.orEmpty().any { it.message.contains("Only the built-in admin") })
+        assertTrue(denied.errors.orEmpty().any { it.message.contains("Only the built-in admin") }, denied.errors.toString())
         transaction {
             assertEquals(null, MangaTable.selectAll().where { MangaTable.id eq mangaId }.single()[MangaTable.acquisitionPolicy])
         }
@@ -1184,7 +1197,7 @@ class PermissionsTest : GraphQLTest() {
         val query = "query { backupRestoreJobs { restoreId } }"
         val denied = graphql(query, user = userWithPermissions(userId, UserPermission.MANAGE_SETTINGS))
         denied.assertHasError()
-        assertTrue(denied.errors.orEmpty().any { it.message.contains("Only the built-in admin") })
+        assertTrue(denied.errors.orEmpty().any { it.message.contains("Only the built-in admin") }, denied.errors.toString())
 
         graphql(query, user = admin).assertNoErrors()
     }

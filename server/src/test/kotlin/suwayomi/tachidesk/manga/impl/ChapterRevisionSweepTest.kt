@@ -22,7 +22,7 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestInstance
-import suwayomi.tachidesk.graphql.directives.RequireAuth
+import suwayomi.tachidesk.graphql.directives.RequireArchiveOwner
 import suwayomi.tachidesk.graphql.mutations.ChapterRevisionSweepMutation
 import suwayomi.tachidesk.graphql.queries.ChapterRevisionSweepQuery
 import suwayomi.tachidesk.manga.model.dataclass.ChapterAcquisitionState
@@ -1058,7 +1058,7 @@ class ChapterRevisionSweepTest : ApplicationTest() {
         // a run reveals which series an operator owns, so every entry point belongs to the same trust
         // boundary as the library APIs themselves
         (queryMethods + mutationMethods).forEach { method ->
-            assertNotNull(method.getAnnotation(RequireAuth::class.java), "${method.name} must require auth")
+            assertNotNull(method.getAnnotation(RequireArchiveOwner::class.java), "${method.name} must require archive ownership")
         }
     }
 

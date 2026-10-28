@@ -57,6 +57,7 @@ class MangaAcquisitionPolicyTest : ApplicationTest() {
     ): MangaType =
         MangaMutation()
             .updateManga(
+                1,
                 MangaMutation.UpdateMangaInput(
                     id = mangaId,
                     patch = MangaMutation.UpdateMangaPatch(acquisitionPolicy = policy),
@@ -67,6 +68,7 @@ class MangaAcquisitionPolicyTest : ApplicationTest() {
     private fun clearPolicy(mangaId: Int): MangaType =
         MangaMutation()
             .updateManga(
+                1,
                 MangaMutation.UpdateMangaInput(
                     id = mangaId,
                     patch = MangaMutation.UpdateMangaPatch(inheritAcquisitionPolicy = true),
@@ -144,6 +146,7 @@ class MangaAcquisitionPolicyTest : ApplicationTest() {
             assertThrows<ExecutionException> {
                 MangaMutation()
                     .updateManga(
+                        1,
                         MangaMutation.UpdateMangaInput(
                             id = mangaId,
                             patch =

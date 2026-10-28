@@ -14,7 +14,7 @@ import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
-import suwayomi.tachidesk.graphql.directives.RequireAuth
+import suwayomi.tachidesk.graphql.directives.RequireArchiveOwner
 import suwayomi.tachidesk.graphql.mutations.CanonicalIdentityMutation
 import suwayomi.tachidesk.graphql.queries.CanonicalIdentityQuery
 import suwayomi.tachidesk.graphql.server.GraphQLSchemaProvider
@@ -66,8 +66,9 @@ class CanonicalIdentitySchemaTest {
         queryFields.forEach { field ->
             assertNotNull(schema.queryType.getFieldDefinition(field), "missing query field $field")
         }
+        val mutationType = requireNotNull(schema.mutationType)
         mutationFields.forEach { field ->
-            assertNotNull(schema.mutationType.getFieldDefinition(field), "missing mutation field $field")
+            assertNotNull(mutationType.getFieldDefinition(field), "missing mutation field $field")
         }
     }
 
@@ -76,23 +77,23 @@ class CanonicalIdentitySchemaTest {
      * the same way the other surfaces in this repository assert it, on the Kotlin entry points.
      */
     @Test
-    fun `every canonical identity field requires authentication`() {
+    fun `every canonical identity field requires archive ownership`() {
         val authenticatedQueryMethods =
             CanonicalIdentityQuery::class.java.declaredMethods
-                .filter { it.isAnnotationPresent(RequireAuth::class.java) }
+                .filter { it.isAnnotationPresent(RequireArchiveOwner::class.java) }
                 .map { it.name }
                 .toSet()
         val authenticatedMutationMethods =
             CanonicalIdentityMutation::class.java.declaredMethods
-                .filter { it.isAnnotationPresent(RequireAuth::class.java) }
+                .filter { it.isAnnotationPresent(RequireArchiveOwner::class.java) }
                 .map { it.name }
                 .toSet()
 
         queryFields.forEach { method ->
-            assertTrue(method in authenticatedQueryMethods, "$method must require authentication")
+            assertTrue(method in authenticatedQueryMethods, "$method must require archive ownership")
         }
         mutationFields.forEach { method ->
-            assertTrue(method in authenticatedMutationMethods, "$method must require authentication")
+            assertTrue(method in authenticatedMutationMethods, "$method must require archive ownership")
         }
     }
 

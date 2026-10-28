@@ -42,6 +42,7 @@ import suwayomi.tachidesk.manga.model.table.MangaTable
 import suwayomi.tachidesk.manga.model.table.encodeArchiveBootstrapCategoryIds
 import suwayomi.tachidesk.manga.model.table.toDataClass
 import suwayomi.tachidesk.server.serverConfig
+import suwayomi.tachidesk.server.user.ARCHIVE_OWNER_ID
 import java.time.Instant
 
 /**
@@ -927,7 +928,7 @@ object ArchiveBootstrap {
             .chunked(1000)
             .flatMap { chunk ->
                 CategoryManga
-                    .getMangasCategories(chunk)
+                    .getMangasCategories(ARCHIVE_OWNER_ID, chunk)
                     .map { (mangaId, categories) -> mangaId to categories.map { it.id } }
             }.toMap()
 

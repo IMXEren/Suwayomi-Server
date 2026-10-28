@@ -197,8 +197,8 @@ class BackupRestoreJobTest : ApplicationTest() {
 
         val finished = runToCompletion(processor, job)
 
+        assertEquals(BackupRestoreJobState.SUCCESS, finished.state, finished.lastError)
         assertEquals(listOf("one", "two"), applied)
-        assertEquals(BackupRestoreJobState.SUCCESS, finished.state)
         assertEquals(BackupRestorePhase.COMPLETED, finished.phase)
         assertEquals(2, finished.mangaIndex)
         assertEquals(2, finished.mangaCount)

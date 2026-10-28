@@ -20,10 +20,12 @@ class ArchiveOwnerEnrollmentTest : ApplicationTest() {
     fun `only the built-in admin's library enrolls a manga into the shared archive`() {
         val otherId =
             transaction {
-                UserAccountTable.insertAndGetId {
-                    it[username] = "archive-owner-enrollment-test"
-                    it[password] = "test"
-                }.value
+                val account =
+                    UserAccountTable.insertAndGetId {
+                        it[username] = "archive-owner-enrollment-test"
+                        it[password] = "test"
+                    }
+                account.value
             }
         val adminManga = createLibraryManga("admin-archive-enrollment")
         val otherManga = createLibraryManga("other-archive-enrollment", otherId)

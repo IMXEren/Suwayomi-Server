@@ -140,6 +140,7 @@ class ChapterRevisionSchemaTest {
     @Test
     fun `exposes the revision query and mutation surface`() {
         val schema = runBlocking { GraphQLSchemaProvider.getSchema() }
+        val mutationType = requireNotNull(schema.mutationType)
 
         assertEquals(
             "ChapterRevisionType",
@@ -152,12 +153,12 @@ class ChapterRevisionSchemaTest {
             )
         }
 
-        assertNotNull(schema.mutationType.getFieldDefinition("approveChapterRevisions"))
-        assertNotNull(schema.mutationType.getFieldDefinition("rejectChapterRevisions"))
-        assertNotNull(schema.mutationType.getFieldDefinition("retryChapterRevisions"))
-        assertNotNull(schema.mutationType.getFieldDefinition("retryChapterRevisionArchives"))
-        assertNotNull(schema.mutationType.getFieldDefinition("retryChapterRevisionPublications"))
-        assertNotNull(schema.mutationType.getFieldDefinition("retryChapterRevisionPrunings"))
+        assertNotNull(mutationType.getFieldDefinition("approveChapterRevisions"))
+        assertNotNull(mutationType.getFieldDefinition("rejectChapterRevisions"))
+        assertNotNull(mutationType.getFieldDefinition("retryChapterRevisions"))
+        assertNotNull(mutationType.getFieldDefinition("retryChapterRevisionArchives"))
+        assertNotNull(mutationType.getFieldDefinition("retryChapterRevisionPublications"))
+        assertNotNull(mutationType.getFieldDefinition("retryChapterRevisionPrunings"))
 
         // the review decisions are a semantically separate surface from the acquisition approval above
         listOf(
@@ -166,7 +167,7 @@ class ChapterRevisionSchemaTest {
             "keepBothChapterRevisions",
             "rejectChapterRevisionCandidates",
         ).forEach { field ->
-            assertNotNull(schema.mutationType.getFieldDefinition(field), "$field must be registered")
+            assertNotNull(mutationType.getFieldDefinition(field), "$field must be registered")
         }
 
         // the accepted-lifecycle and publication read surface is registered too
@@ -249,6 +250,7 @@ class ChapterRevisionSchemaTest {
     @Test
     fun `exposes the chapter identity, the plural rejection mutation and paginated history`() {
         val schema = runBlocking { GraphQLSchemaProvider.getSchema() }
+        val mutationType = requireNotNull(schema.mutationType)
 
         val revisionType = schema.getType("ChapterRevisionType") as GraphQLObjectType
         val chapterKeyField = revisionType.getFieldDefinition("chapterKey")
@@ -257,8 +259,8 @@ class ChapterRevisionSchemaTest {
         assertEquals("String", GraphQLTypeUtil.unwrapAll(chapterKeyField.type).name)
 
         // the singular name was unused and misleading: the mutation takes a list of candidates
-        assertNotNull(schema.mutationType.getFieldDefinition("rejectChapterRevisionCandidates"))
-        assertNull(schema.mutationType.getFieldDefinition("rejectChapterRevisionCandidate"))
+        assertNotNull(mutationType.getFieldDefinition("rejectChapterRevisionCandidates"))
+        assertNull(mutationType.getFieldDefinition("rejectChapterRevisionCandidate"))
 
         val history = schema.queryType.getFieldDefinition("chapterRevisionHistory")
         assertEquals("ChapterRevisionNodeList", GraphQLTypeUtil.unwrapAll(history.type).name)
@@ -272,6 +274,7 @@ class ChapterRevisionSchemaTest {
     @Test
     fun `exposes the visual comparison surface without any server side location`() {
         val schema = runBlocking { GraphQLSchemaProvider.getSchema() }
+        val mutationType = requireNotNull(schema.mutationType)
 
         listOf(
             "chapterRevisionComparison",
@@ -297,7 +300,7 @@ class ChapterRevisionSchemaTest {
             GraphQLTypeUtil.unwrapAll(schema.queryType.getFieldDefinition("chapterRevisionComparison").type).name,
         )
 
-        assertNotNull(schema.mutationType.getFieldDefinition("retryChapterRevisionVisualAnalyses"))
+        assertNotNull(mutationType.getFieldDefinition("retryChapterRevisionVisualAnalyses"))
         assertNotNull(schema.getType("ChapterVisualAnalysisState"), "the analysis state enum must be registered")
 
         // the row is what a review UI renders, and it reports only whether each side has a preview: the
@@ -377,6 +380,7 @@ class ChapterRevisionSchemaTest {
         // building the schema is itself the assertion: a sweep type that could not be wired would
         // have made this call throw instead of returning a schema
         val schema = runBlocking { GraphQLSchemaProvider.getSchema() }
+        val mutationType = requireNotNull(schema.mutationType)
 
         listOf(
             "chapterRevisionSweepSessions",
@@ -408,8 +412,8 @@ class ChapterRevisionSchemaTest {
         // the control surface is registered under the sweep prefix; the per-method RequireAuth
         // annotations are asserted where they live, on the Kotlin entry points
         assertTrue(
-            schema.mutationType.fieldDefinitions.count { it.name.contains("ChapterRevisionSweep") } >= 5,
-            "expected the full sweep mutation surface, got ${schema.mutationType.fieldDefinitions.map { it.name }}",
+            mutationType.fieldDefinitions.count { it.name.contains("ChapterRevisionSweep") } >= 5,
+            "expected the full sweep mutation surface, got ${mutationType.fieldDefinitions.map { it.name }}",
         )
     }
 }

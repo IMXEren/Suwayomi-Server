@@ -47,6 +47,7 @@ class MangaAcceptedRevisionRetentionTest : ApplicationTest() {
             includeHistory = false,
             includeClientData = false,
             includeServerSettings = false,
+            includeUserSettings = false,
         )
 
     private val errors = mutableListOf<Pair<Date, String>>()
@@ -64,6 +65,7 @@ class MangaAcceptedRevisionRetentionTest : ApplicationTest() {
     ): MangaType =
         MangaMutation()
             .updateManga(
+                1,
                 MangaMutation.UpdateMangaInput(
                     id = mangaId,
                     patch =
@@ -123,6 +125,7 @@ class MangaAcceptedRevisionRetentionTest : ApplicationTest() {
 
         MangaMutation()
             .updateMangas(
+                1,
                 MangaMutation.UpdateMangasInput(
                     ids = listOf(first, second),
                     patch = MangaMutation.UpdateMangaPatch(acceptedRevisionRetention = 5),

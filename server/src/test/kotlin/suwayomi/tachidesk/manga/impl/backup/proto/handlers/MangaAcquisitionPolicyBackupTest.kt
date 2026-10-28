@@ -36,6 +36,7 @@ class MangaAcquisitionPolicyBackupTest : ApplicationTest() {
             includeHistory = false,
             includeClientData = false,
             includeServerSettings = false,
+            includeUserSettings = false,
         )
 
     private val errors = mutableListOf<Pair<Date, String>>()

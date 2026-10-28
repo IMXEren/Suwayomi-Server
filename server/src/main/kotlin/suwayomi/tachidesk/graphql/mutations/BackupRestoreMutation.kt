@@ -37,9 +37,7 @@ class BackupRestoreMutation {
      * position instead of importing the library again.
      */
     @RequireArchiveOwner
-    fun retryBackupRestore(
-        input: BackupRestoreJobInput,
-    ): BackupRestoreJobPayload {
+    fun retryBackupRestore(input: BackupRestoreJobInput): BackupRestoreJobPayload {
         val job =
             BackupRestoreJob.get(input.restoreId)
                 ?: return failure(input, "no backup restore with id ${input.restoreId}")
@@ -58,9 +56,7 @@ class BackupRestoreMutation {
 
     /** Abandons a restore. A running one stops at its next series boundary. */
     @RequireArchiveOwner
-    fun cancelBackupRestore(
-        input: BackupRestoreJobInput,
-    ): BackupRestoreJobPayload {
+    fun cancelBackupRestore(input: BackupRestoreJobInput): BackupRestoreJobPayload {
         val job =
             BackupRestoreJob.get(input.restoreId)
                 ?: return failure(input, "no backup restore with id ${input.restoreId}")
@@ -80,9 +76,7 @@ class BackupRestoreMutation {
      * continue.
      */
     @RequireArchiveOwner
-    fun cleanupBackupRestore(
-        input: BackupRestoreJobInput,
-    ): BackupRestoreJobPayload {
+    fun cleanupBackupRestore(input: BackupRestoreJobInput): BackupRestoreJobPayload {
         val job =
             BackupRestoreJob.get(input.restoreId)
                 ?: return failure(input, "no backup restore with id ${input.restoreId}")
@@ -109,9 +103,7 @@ class BackupRestoreMutation {
      * start because another run was active.
      */
     @RequireArchiveOwner
-    fun retryBackupRestoreHandoff(
-        input: BackupRestoreJobInput,
-    ): BackupRestoreJobPayload {
+    fun retryBackupRestoreHandoff(input: BackupRestoreJobInput): BackupRestoreJobPayload {
         val job =
             BackupRestoreJob.get(input.restoreId)
                 ?: return failure(input, "no backup restore with id ${input.restoreId}")

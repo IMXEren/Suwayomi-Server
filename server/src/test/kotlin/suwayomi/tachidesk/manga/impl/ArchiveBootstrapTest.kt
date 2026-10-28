@@ -25,7 +25,7 @@ import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
-import suwayomi.tachidesk.graphql.directives.RequireAuth
+import suwayomi.tachidesk.graphql.directives.RequireArchiveOwner
 import suwayomi.tachidesk.graphql.mutations.ArchiveBootstrapMutation
 import suwayomi.tachidesk.graphql.queries.ArchiveBootstrapQuery
 import suwayomi.tachidesk.graphql.server.GraphQLSchemaProvider
@@ -270,7 +270,7 @@ class ArchiveBootstrapTest : ApplicationTest() {
         workers.forEach { it.join(30_000) }
 
         assertEquals(2, outcomes.size)
-        assertTrue(outcomes.all { it is ArchiveBootstrap.StartOutcome.Started })
+        assertTrue(outcomes.all { it is ArchiveBootstrap.StartOutcome.Started }, "outcomes=$outcomes")
         assertEquals(1, outcomes.map { (it as ArchiveBootstrap.StartOutcome.Started).session.id }.toSet().size)
         assertEquals(origin, sessionOrigins().single().second)
 
@@ -330,9 +330,9 @@ class ArchiveBootstrapTest : ApplicationTest() {
     @Test
     fun `resolves the first matching category override`() {
         val mangaId = libraryManga("bootstrap-category-override")
-        val first = createCategory("bootstrap-category-first")
-        val second = createCategory("bootstrap-category-second")
-        addMangaToCategories(mangaId, listOf(first, second))
+        val first = createCategory(1, "bootstrap-category-first")
+        val second = createCategory(1, "bootstrap-category-second")
+        addMangaToCategories(1, mangaId, listOf(first, second))
 
         val outcome =
             start(
@@ -913,12 +913,12 @@ class ArchiveBootstrapSchemaTest {
         // itself, so the annotation is what is asserted here.
         val authenticatedQueryMethods =
             ArchiveBootstrapQuery::class.java.declaredMethods
-                .filter { it.isAnnotationPresent(RequireAuth::class.java) }
+                .filter { it.isAnnotationPresent(RequireArchiveOwner::class.java) }
                 .map { it.name }
                 .toSet()
         val authenticatedMutationMethods =
             ArchiveBootstrapMutation::class.java.declaredMethods
-                .filter { it.isAnnotationPresent(RequireAuth::class.java) }
+                .filter { it.isAnnotationPresent(RequireArchiveOwner::class.java) }
                 .map { it.name }
                 .toSet()
 
@@ -932,7 +932,7 @@ class ArchiveBootstrapSchemaTest {
             "archiveBootstrapUnresolvedSources",
             "archiveBootstrapEffectivePolicy",
         ).forEach { method ->
-            assertTrue(method in authenticatedQueryMethods, "$method must require authentication")
+            assertTrue(method in authenticatedQueryMethods, "$method must require archive ownership")
         }
         listOf(
             "startArchiveBootstrap",
@@ -941,7 +941,7 @@ class ArchiveBootstrapSchemaTest {
             "cancelArchiveBootstrap",
             "retryArchiveBootstrapItems",
         ).forEach { method ->
-            assertTrue(method in authenticatedMutationMethods, "$method must require authentication")
+            assertTrue(method in authenticatedMutationMethods, "$method must require archive ownership")
         }
 
         // the single-active invariant is never exposed as a column

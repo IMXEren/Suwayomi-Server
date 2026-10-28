@@ -54,7 +54,7 @@ class MangaMutation {
         val inLibrary: Boolean? = null,
         val acquisitionPolicy: MangaAcquisitionPolicy? = null,
         /** true clears the per-series override so the series inherits the configurable global default */
-        val inheritAcquisitionPolicy: Boolean = false,
+        val inheritAcquisitionPolicy: Boolean? = null,
         /**
          * Per-series override of how many superseded accepted revisions to keep in addition to the
          * active one: -1 keeps every accepted revision, >= 0 keeps that many. Null leaves it
@@ -62,7 +62,7 @@ class MangaMutation {
          */
         val acceptedRevisionRetention: Int? = null,
         /** true clears the per-series override so the series inherits the global default again */
-        val inheritAcceptedRevisionRetention: Boolean = false,
+        val inheritAcceptedRevisionRetention: Boolean? = null,
     )
 
     data class UpdateMangaPayload(
@@ -96,15 +96,15 @@ class MangaMutation {
         require(ChapterRevision.isValidAcceptedRevisionRetentionOverride(patch.acceptedRevisionRetention)) {
             "acceptedRevisionRetention must be -1 (unlimited), 0 or greater, but was ${patch.acceptedRevisionRetention}"
         }
-        require(!(patch.inheritAcceptedRevisionRetention && patch.acceptedRevisionRetention != null)) {
+        require(!(patch.inheritAcceptedRevisionRetention == true && patch.acceptedRevisionRetention != null)) {
             "acceptedRevisionRetention and inheritAcceptedRevisionRetention are mutually exclusive"
         }
-        require(!(patch.inheritAcquisitionPolicy && patch.acquisitionPolicy != null)) {
+        require(!(patch.inheritAcquisitionPolicy == true && patch.acquisitionPolicy != null)) {
             "acquisitionPolicy and inheritAcquisitionPolicy are mutually exclusive"
         }
         val modifiesArchivePolicy =
-            patch.acquisitionPolicy != null || patch.inheritAcquisitionPolicy ||
-                patch.acceptedRevisionRetention != null || patch.inheritAcceptedRevisionRetention
+            patch.acquisitionPolicy != null || patch.inheritAcquisitionPolicy == true ||
+                patch.acceptedRevisionRetention != null || patch.inheritAcceptedRevisionRetention == true
         require(userId == ARCHIVE_OWNER_ID || !modifiesArchivePolicy) { "Only the built-in admin can change shared archive policy" }
 
         transaction {
@@ -120,9 +120,9 @@ class MangaMutation {
             if (modifiesArchivePolicy) {
                 MangaTable.update({ MangaTable.id inList ids }) { update ->
                     patch.acquisitionPolicy?.also { update[acquisitionPolicy] = it.name }
-                    if (patch.inheritAcquisitionPolicy) update[acquisitionPolicy] = null
+                    if (patch.inheritAcquisitionPolicy == true) update[acquisitionPolicy] = null
                     patch.acceptedRevisionRetention?.also { update[acceptedRevisionRetention] = it }
-                    if (patch.inheritAcceptedRevisionRetention) update[acceptedRevisionRetention] = null
+                    if (patch.inheritAcceptedRevisionRetention == true) update[acceptedRevisionRetention] = null
                 }
             }
         }.apply {
@@ -146,7 +146,7 @@ class MangaMutation {
             }
         }
 
-        if (patch.acceptedRevisionRetention != null || patch.inheritAcceptedRevisionRetention) {
+        if (patch.acceptedRevisionRetention != null || patch.inheritAcceptedRevisionRetention == true) {
             // A per-series override only moves revisions of the changed series in or out of the
             // retention window, so only their published identities are reconciled instead of sweeping
             // the whole library.

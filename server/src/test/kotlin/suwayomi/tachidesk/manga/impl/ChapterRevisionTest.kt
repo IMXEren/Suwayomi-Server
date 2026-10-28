@@ -10,6 +10,7 @@ package suwayomi.tachidesk.manga.impl
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import org.jetbrains.exposed.v1.core.and
 import org.jetbrains.exposed.v1.core.eq
 import org.jetbrains.exposed.v1.jdbc.selectAll
 import org.jetbrains.exposed.v1.jdbc.transactions.transaction
@@ -31,6 +32,7 @@ import suwayomi.tachidesk.manga.model.dataclass.MangaAcquisitionPolicy
 import suwayomi.tachidesk.manga.model.table.ChapterRevisionTable
 import suwayomi.tachidesk.manga.model.table.ChapterTable
 import suwayomi.tachidesk.manga.model.table.MangaTable
+import suwayomi.tachidesk.manga.model.table.MangaUserTable
 import suwayomi.tachidesk.manga.model.table.toDataClass
 import suwayomi.tachidesk.server.serverConfig
 import suwayomi.tachidesk.test.ApplicationTest
@@ -360,7 +362,9 @@ class ChapterRevisionTest : ApplicationTest() {
     fun `candidate creation is gated to tracked library manga`() {
         val mangaId = createLibraryManga("REVISION_OUTSIDE_LIBRARY").also { createChapters(it, 2, read = false) }
         transaction {
-            MangaTable.update({ MangaTable.id eq mangaId }) { it[inLibrary] = false }
+            MangaUserTable.update({ (MangaUserTable.manga eq mangaId) and (MangaUserTable.user eq 1) }) {
+                it[MangaUserTable.inLibrary] = false
+            }
         }
         setPolicy(mangaId, MangaAcquisitionPolicy.MANUAL)
 
@@ -369,7 +373,9 @@ class ChapterRevisionTest : ApplicationTest() {
         assertEquals(0L, countRevisions(mangaId))
 
         transaction {
-            MangaTable.update({ MangaTable.id eq mangaId }) { it[inLibrary] = true }
+            MangaUserTable.update({ (MangaUserTable.manga eq mangaId) and (MangaUserTable.user eq 1) }) {
+                it[MangaUserTable.inLibrary] = true
+            }
         }
         assertEquals(2, createCandidates(mangaId, 2000).size, "the same manga is tracked once it is added to the library")
     }

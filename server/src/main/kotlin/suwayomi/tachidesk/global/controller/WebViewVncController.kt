@@ -6,6 +6,7 @@ import io.javalin.http.HttpStatus
 import io.javalin.websocket.WsConfig
 import io.javalin.websocket.WsConnectContext
 import io.javalin.websocket.WsContext
+import kotlinx.coroutines.runBlocking
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import suwayomi.tachidesk.global.impl.WebViewBrowser
@@ -145,7 +146,7 @@ object WebViewVncController {
             // The page's own files are authenticated by a cookie scoped to this prefix, and a
             // browser attaches cookies to a websocket handshake made from any origin, so a
             // handshake has to present the token itself and the cookie alone is not enough.
-            getUserFromWsContext(ctx, acceptCookie = false).requireUser()
+            runBlocking { getUserFromWsContext(ctx, acceptCookie = false).requireUser() }
             ctx.enableAutomaticPings()
             // Remember which browser tab this socket is displaying, so closing the socket closes
             // that tab and no other. A view that goes away must not leave a browser running: an

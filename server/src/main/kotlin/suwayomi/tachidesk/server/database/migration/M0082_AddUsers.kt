@@ -435,9 +435,9 @@ class M0082_AddUsers : Migration() {
              EXECUTE FUNCTION mirror_admin_archive_enrollment();
              """
 
-         // Backfill reads the old single-user columns before Step 6 moves them to per-user tables.
-         // MANGA.in_library stays as the admin-owned archive snapshot, so target-row existence
-         // (rather than the source column's absence) prevents duplicate admin rows on a retry.
+        // Backfill reads the old single-user columns before Step 6 moves them to per-user tables.
+        // MANGA.in_library stays as the admin-owned archive snapshot, so target-row existence
+        // (rather than the source column's absence) prevents duplicate admin rows on a retry.
         private val chapterBackfillSql: String =
             if (columnExists("CHAPTER", "LAST_READ_AT")) {
                 """

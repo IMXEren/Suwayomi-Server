@@ -323,7 +323,7 @@ object Chapter {
 
                 // durable approval/backlog candidates, independent of the legacy auto-download flow
                 createdRevisionCandidates =
-                    ChapterRevision.createCandidatesForNewChapters(mangaEntry, insertedChapters, now).isNotEmpty()
+                    ChapterRevision.createCandidatesForNewChapters(mangaEntry, insertedChapters, now.epochSecond).isNotEmpty()
 
                 val chaptersToPreserveDownload =
                     insertedChapters.filter { chapter ->
@@ -417,7 +417,7 @@ object Chapter {
                 if (metadataChangeDiscoveries.isNotEmpty()) {
                     createdRevisionCandidates =
                         ChapterRevision
-                            .createCandidatesForMetadataChanges(mangaEntry, metadataChangeDiscoveries, now)
+                            .createCandidatesForMetadataChanges(mangaEntry, metadataChangeDiscoveries, now.epochSecond)
                             .isNotEmpty() || createdRevisionCandidates
                 }
 

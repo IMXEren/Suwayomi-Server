@@ -109,7 +109,7 @@ object BackupRestoreCategoryPolicies {
 /**
  * Compact, version-independent encoding of the restore's [BackupFlags].
  *
- * A seven character bit string in declaration order. Deliberately not a serialized object: the flag
+ * An eight character bit string in declaration order (older jobs have seven). Deliberately not a serialized object: the flag
  * set is small, fixed and read back by a database dump as easily as by this process.
  */
 object BackupRestoreFlagsCodec {
@@ -122,6 +122,7 @@ object BackupRestoreFlagsCodec {
             append(if (flags.includeHistory) '1' else '0')
             append(if (flags.includeClientData) '1' else '0')
             append(if (flags.includeServerSettings) '1' else '0')
+            append(if (flags.includeUserSettings) '1' else '0')
         }
 
     fun decode(value: String): BackupFlags =
@@ -133,6 +134,7 @@ object BackupRestoreFlagsCodec {
             includeHistory = value.getOrNull(4) == '1',
             includeClientData = value.getOrNull(5) == '1',
             includeServerSettings = value.getOrNull(6) == '1',
+            includeUserSettings = value.getOrNull(7)?.let { it == '1' } ?: BackupFlags.DEFAULT.includeUserSettings,
         )
 }
 

@@ -42,8 +42,9 @@ class KomgaSchemaTest {
             "KomgaRescanStatusType",
             GraphQLTypeUtil.unwrapAll(schema.queryType.getFieldDefinition("komgaRescanStatus").type).name,
         )
-        assertNotNull(schema.mutationType.getFieldDefinition("requestKomgaRescan"))
-        assertNotNull(schema.mutationType.getFieldDefinition("retryKomgaRescan"))
+        val mutationType = requireNotNull(schema.mutationType)
+        assertNotNull(mutationType.getFieldDefinition("requestKomgaRescan"))
+        assertNotNull(mutationType.getFieldDefinition("retryKomgaRescan"))
     }
 
     @Test
@@ -97,7 +98,7 @@ class KomgaSchemaTest {
     @Test
     fun `setSettings can still accept a new api key while the secret stays write-only`() {
         val schema = runBlocking { GraphQLSchemaProvider.getSchema() }
-        val setSettings = schema.mutationType.getFieldDefinition("setSettings")
+        val setSettings = requireNotNull(schema.mutationType).getFieldDefinition("setSettings")
         val setSettingsInput =
             GraphQLTypeUtil.unwrapAll(setSettings.getArgument("input").type)
                 as GraphQLInputObjectType
@@ -121,8 +122,8 @@ class KomgaSchemaTest {
 
             serverConfig.komgaApiKey.value = key
             assertEquals(key, serverConfig.komgaApiKey.value, "the runtime still reads the true value")
-            assertNull(SettingsType(serverConfig).komgaApiKey, "SettingsType(config) must not echo the key")
-            assertNull(SettingsType().komgaApiKey, "the query and setSettings payload build the same masked object")
+            assertNull(SettingsType(1, serverConfig).komgaApiKey, "SettingsType(config) must not echo the key")
+            assertNull(SettingsType(1).komgaApiKey, "the query and setSettings payload build the same masked object")
         } finally {
             serverConfig.komgaApiKey.value = original
         }

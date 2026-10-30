@@ -1,0 +1,13 @@
+{
+  "name": "suwayomi-server",
+  "version": "0.0.0-semantically-released",
+  "private": true,
+  "description": "Release tooling for this Suwayomi-Server fork. Not a published package; the version is managed by semantic-release.",
+  "devDependencies": {
+    "@saithodev/semantic-release-backmerge": "4.0.1",
+    "@semantic-release/changelog": "7.0.0",
+    "@semantic-release/exec": "7.1.0",
+    "@semantic-release/git": "11.0.1",
+    "semantic-release": "25.0.9"
+  }
+}

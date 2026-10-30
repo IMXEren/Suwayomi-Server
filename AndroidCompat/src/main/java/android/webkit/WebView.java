@@ -95,9 +95,19 @@ public class WebView extends AbsoluteLayout
     // set in the WebView constructor.
     private static volatile boolean sEnforceThreadChecking = false;
     private static CallableArgument<WebView, WebViewProvider> mProviderFactory;
+    private static boolean sDocumentStartScriptSupported;
 
     public static void setProviderFactory(CallableArgument<WebView, WebViewProvider> factory) {
+        setProviderFactory(factory, false);
+    }
+
+    public static void setProviderFactory(CallableArgument<WebView, WebViewProvider> factory, boolean documentStartScriptSupported) {
         mProviderFactory = factory;
+        sDocumentStartScriptSupported = documentStartScriptSupported;
+    }
+
+    public static boolean isDocumentStartScriptSupported() {
+        return sDocumentStartScriptSupported;
     }
 
     public class WebViewTransport {
@@ -874,11 +884,6 @@ public class WebView extends AbsoluteLayout
     }
 
     @NonNull
-    public static ClassLoader getWebViewClassLoader() {
-        throw new RuntimeException("Stub!");
-    }
-
-    @NonNull
     public Looper getWebViewLooper() {
         return mWebViewThread;
     }
@@ -951,6 +956,22 @@ public class WebView extends AbsoluteLayout
             // number of dependencies here; the rest are deferred to init().
             mProvider = mProviderFactory.call(this);
         }
+    }
+
+    // @UnsupportedAppUsage
+    // Here because Keiyoushi relies on it
+    private static WebViewFactoryProvider getFactory() {
+        return new DummyWebViewFactoryProvider();
+    }
+
+    /**
+     * Returns the {@link ClassLoader} used to load internal WebView classes.
+     * This method is meant for use by the WebView Support Library, there is no reason to use this
+     * method otherwise.
+     */
+    @NonNull
+    public static ClassLoader getWebViewClassLoader() {
+        return getFactory().getWebViewClassLoader();
     }
 
     private final Looper mWebViewThread = Looper.myLooper();
@@ -1050,6 +1071,11 @@ public class WebView extends AbsoluteLayout
     @Override
     public boolean onHoverEvent(MotionEvent event) {
         return mProvider.getViewDelegate().onHoverEvent(event);
+    }
+
+    @Override
+    public boolean dispatchTouchEvent(MotionEvent event) {
+        return onTouchEvent(event);
     }
 
     @Override
@@ -1364,5 +1390,19 @@ public class WebView extends AbsoluteLayout
             return icon;
         }
         return super.onResolvePointerIcon(event, pointerIndex);
+    }
+
+    public static class DummyWebViewFactoryProvider implements WebViewFactoryProvider {
+        public Statics getStatics() { throw new RuntimeException("Not supported"); }
+        // public WebViewProvider createWebView(WebView webView, WebView.PrivateAccess privateAccess) { throw new RuntimeException("Not supported"); }
+        // public GeolocationPermissions getGeolocationPermissions() { throw new RuntimeException("Not supported"); }
+        // public CookieManager getCookieManager() { throw new RuntimeException("Not supported"); }
+        // public TokenBindingService getTokenBindingService() { throw new RuntimeException("Not supported"); }
+        // public TracingController getTracingController() { throw new RuntimeException("Not supported"); }
+        // public ServiceWorkerController getServiceWorkerController() { throw new RuntimeException("Not supported"); }
+        // public WebIconDatabase getWebIconDatabase() { throw new RuntimeException("Not supported"); }
+        // public WebStorage getWebStorage() { throw new RuntimeException("Not supported"); }
+        // public WebViewDatabase getWebViewDatabase(Context context) { throw new RuntimeException("Not supported"); }
+        public ClassLoader getWebViewClassLoader() { return getClass().getClassLoader(); }
     }
 }

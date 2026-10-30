@@ -23,6 +23,7 @@ import org.apache.commons.compress.compressors.gzip.GzipCompressorInputStream
 import org.cef.CefApp
 import org.cef.CefSettings.LogSeverity
 import org.cef.SystemBootstrap
+import suwayomi.tachidesk.graphql.types.WebViewProvider
 import suwayomi.tachidesk.server.ApplicationDirs
 import suwayomi.tachidesk.server.generated.BuildConfig
 import suwayomi.tachidesk.server.serverConfig
@@ -92,9 +93,10 @@ object CEFManager {
         try {
             CefHelper.cefApp.value = Result.success(null)
 
-            if (!serverConfig.kcefEnabled.value) {
-                logger.info { "CEF is disabled" }
-                CefHelper.cefApp.value = Result.failure(CefException("CEF is disabled"))
+            val skipReason = embeddedBrowserSkipReason()
+            if (skipReason != null) {
+                logger.info { skipReason }
+                CefHelper.cefApp.value = Result.failure(CefException(skipReason))
                 return
             }
 
@@ -128,6 +130,12 @@ object CEFManager {
                                     "--change-stack-guard-on-fork=disable",
                                 ),
                             )
+                            buildSocksProxyUrl(
+                                serverConfig.socksProxyEnabled.value,
+                                serverConfig.socksProxyVersion.value,
+                                serverConfig.socksProxyHost.value,
+                                serverConfig.socksProxyPort.value,
+                            )?.let { appArgsAsList.add("--proxy-server=$it") }
                             cefSettings.apply {
                                 windowless_rendering_enabled = true
                                 cache_path = (Path(applicationDirs.cacheDir) / "kcef").absolutePathString()
@@ -571,3 +579,25 @@ object CEFManager {
         }
     }
 }
+
+/**
+ * Why the embedded browser must not be initialized, or null when it should be.
+ *
+ * Both settings are read once, at startup. When the CDP adapter is configured, extension WebViews
+ * use Prowl's browser and starting CEF as well would waste the memory held by a second browser.
+ * Without CDP, extensions still need CEF even when the user-facing WebView is external. Changing
+ * this choice after startup requires a restart.
+ *
+ * The settings are parameters so that the decision can be exercised without loading CEF, which is
+ * the thing being decided about.
+ */
+internal fun embeddedBrowserSkipReason(
+    kcefEnabled: Boolean = serverConfig.kcefEnabled.value,
+    provider: WebViewProvider = serverConfig.webViewProvider.value,
+    cdpConfigured: Boolean = System.getenv("WEB_VIEW_CDP_TOKEN_FILE") != null,
+): String? =
+    when {
+        !kcefEnabled -> "CEF is disabled"
+        provider == WebViewProvider.PROWL_VNC && cdpConfigured -> "CEF is not initialized; extension WebViews use Prowl CDP"
+        else -> null
+    }

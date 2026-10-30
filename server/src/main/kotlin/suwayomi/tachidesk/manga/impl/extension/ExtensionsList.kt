@@ -33,6 +33,8 @@ object ExtensionsList {
     private val logger = KotlinLogging.logger {}
 
     var lastUpdateCheck: Long = 0
+
+    @Volatile
     var updateMap = ConcurrentHashMap<String, ExtensionInfo>()
 
     suspend fun fetchExtensions() {
@@ -93,6 +95,7 @@ object ExtensionsList {
 
     private suspend fun updateExtensionDatabase(foundExtensions: List<ExtensionInfo>) {
         updateExtensionDatabaseMutex.withLock {
+            val availableUpdates = ConcurrentHashMap<String, ExtensionInfo>()
             transaction {
                 val uniqueExtensions =
                     foundExtensions
@@ -159,7 +162,7 @@ object ExtensionsList {
                                         foundExtension.versionCode > extensionRecord[ExtensionTable.versionCode] -> {
                                             // there is an update
                                             this[ExtensionTable.hasUpdate] = true
-                                            updateMap.putIfAbsent(foundExtension.pkgName, foundExtension)
+                                            availableUpdates[foundExtension.pkgName] = foundExtension
                                         }
 
                                         foundExtension.versionCode < extensionRecord[ExtensionTable.versionCode] -> {
@@ -231,6 +234,7 @@ object ExtensionsList {
                     ExtensionTable.deleteWhere { ExtensionTable.pkgName inList removeExtensions }
                 }
             }
+            updateMap = availableUpdates
         }
     }
 }

@@ -33,8 +33,8 @@ public class WebResourceResponse {
     private boolean mImmutable;
     private String mMimeType;
     private String mEncoding;
-    private int mStatusCode;
-    private String mReasonPhrase;
+    private int mStatusCode = 200;
+    private String mReasonPhrase = "OK";
     private Map<String, String> mResponseHeaders;
     private InputStream mInputStream;
 

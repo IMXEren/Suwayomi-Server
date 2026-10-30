@@ -5,6 +5,7 @@ import kotlinx.serialization.json.JsonObject
 import org.jetbrains.exposed.v1.core.Column
 import org.jetbrains.exposed.v1.core.ColumnType
 import org.jetbrains.exposed.v1.core.Table
+import org.jetbrains.exposed.v1.core.TextColumnType
 
 class JsonObjectColumn(
     private val delegate: ColumnType<String>,
@@ -24,4 +25,10 @@ fun Table.jsonObject(name: String): Column<JsonObject> =
     registerColumn(
         name,
         JsonObjectColumn(unlimitedVarcharType()),
+    )
+
+fun Table.jsonObjectText(name: String): Column<JsonObject> =
+    registerColumn(
+        name,
+        JsonObjectColumn(TextColumnType()),
     )

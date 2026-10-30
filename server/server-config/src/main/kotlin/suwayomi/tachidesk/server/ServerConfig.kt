@@ -14,6 +14,7 @@ import io.github.config4k.toConfig
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -26,6 +27,7 @@ import kotlinx.coroutines.flow.onEach
 import org.jetbrains.exposed.v1.core.SortOrder
 import suwayomi.tachidesk.graphql.types.AuthMode
 import suwayomi.tachidesk.graphql.types.CbzMediaType
+import suwayomi.tachidesk.graphql.types.WebViewProvider
 import suwayomi.tachidesk.graphql.types.DatabaseType
 import suwayomi.tachidesk.graphql.types.DownloadConversion
 import suwayomi.tachidesk.graphql.types.KoreaderSyncChecksumMethod
@@ -43,7 +45,6 @@ import suwayomi.tachidesk.manga.impl.extension.repoMatchRegex
 import suwayomi.tachidesk.server.settings.BooleanSetting
 import suwayomi.tachidesk.server.settings.DisableableDoubleSetting
 import suwayomi.tachidesk.server.settings.DisableableIntSetting
-import suwayomi.tachidesk.server.settings.DoubleSetting
 import suwayomi.tachidesk.server.settings.DurationSetting
 import suwayomi.tachidesk.server.settings.EnumSetting
 import suwayomi.tachidesk.server.settings.IntSetting
@@ -55,6 +56,7 @@ import suwayomi.tachidesk.server.settings.SettingGroup
 import suwayomi.tachidesk.server.settings.SettingsRegistry
 import suwayomi.tachidesk.server.settings.StringSetting
 import suwayomi.tachidesk.server.util.Platform
+import suwayomi.tachidesk.server.util.downloadConversionTypeInfo
 import uy.kohesive.injekt.injectLazy
 import xyz.nulldev.ts.config.GlobalConfigManager
 import xyz.nulldev.ts.config.SystemPropertyOverridableConfigModule
@@ -70,6 +72,10 @@ const val SERVER_CONFIG_MODULE_NAME = "server"
 
 val serverConfig: ServerConfig by lazy { GlobalConfigManager.module() }
 
+val userSettingDeprecated = SettingsRegistry.SettingDeprecated.Remove(
+    message = "Now per-user",
+)
+
 private val application: Application by injectLazy()
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -77,14 +83,14 @@ fun <T> subscribeTo(
     flow: Flow<T>,
     ignoreInitialValue: Boolean = true,
     onChange: suspend (value: T) -> Unit,
-) {
+): Job {
     val actualFlow =
         if (ignoreInitialValue) {
             flow.drop(1)
         } else {
             flow
         }
-    actualFlow.distinctUntilChanged().conflate().onEach { onChange(it) }.launchIn(mutableConfigValueScope)
+    return actualFlow.distinctUntilChanged().conflate().onEach { onChange(it) }.launchIn(mutableConfigValueScope)
 }
 
 // Settings are ordered by "protoNumber".
@@ -229,19 +235,22 @@ class ServerConfig(
         excludeFromBackup = true,
     )
 
-    val autoDownloadNewChapters: MutableStateFlow<Boolean> by BooleanSetting(
+    @Deprecated("Now per-user")
+    val autoDownloadNewChapters: MutableStateFlow<Boolean> by MigratedConfigValue(
         protoNumber = 17,
         group = SettingGroup.DOWNLOADER,
         privacySafe = true,
         defaultValue = false,
+        deprecated = userSettingDeprecated,
     )
 
-    val excludeEntryWithUnreadChapters: MutableStateFlow<Boolean> by BooleanSetting(
+    @Deprecated("Now per-user")
+    val excludeEntryWithUnreadChapters: MutableStateFlow<Boolean> by MigratedConfigValue(
         protoNumber = 18,
         group = SettingGroup.DOWNLOADER,
         privacySafe = true,
         defaultValue = true,
-        description = "Exclude entries with unread chapters from auto-download",
+        deprecated = userSettingDeprecated,
     )
 
     @Deprecated("Will get removed", replaceWith = ReplaceWith("autoDownloadNewChaptersLimit"))
@@ -260,21 +269,22 @@ class ServerConfig(
         setMigrated = { autoDownloadNewChaptersLimit.value = it },
     )
 
-    val autoDownloadNewChaptersLimit: MutableStateFlow<Int> by DisableableIntSetting(
+    @Deprecated("Now per-user")
+    val autoDownloadNewChaptersLimit: MutableStateFlow<Int> by MigratedConfigValue(
         protoNumber = 20,
         group = SettingGroup.DOWNLOADER,
         privacySafe = true,
         defaultValue = 0,
-        min = 0,
-        description = "Maximum number of new chapters to auto-download",
+        deprecated = userSettingDeprecated,
     )
 
-    val autoDownloadIgnoreReUploads: MutableStateFlow<Boolean> by BooleanSetting(
+    @Deprecated("Now per-user")
+    val autoDownloadIgnoreReUploads: MutableStateFlow<Boolean> by MigratedConfigValue(
         protoNumber = 21,
         group = SettingGroup.DOWNLOADER,
         privacySafe = true,
         defaultValue = false,
-        description = "Ignore re-uploaded chapters from auto-download",
+        deprecated = userSettingDeprecated,
     )
 
     @Deprecated("Will get removed", replaceWith = ReplaceWith("extensionStores"))
@@ -324,25 +334,31 @@ class ServerConfig(
                 "Library update/downloads are grouped by source and all manga of a source are updated/downloaded synchronously",
     )
 
-    val excludeUnreadChapters: MutableStateFlow<Boolean> by BooleanSetting(
+    @Deprecated("Now per-user")
+    val excludeUnreadChapters: MutableStateFlow<Boolean> by MigratedConfigValue(
         protoNumber = 24,
         group = SettingGroup.LIBRARY_UPDATES,
         privacySafe = true,
         defaultValue = true,
+        deprecated = userSettingDeprecated,
     )
 
-    val excludeNotStarted: MutableStateFlow<Boolean> by BooleanSetting(
+    @Deprecated("Now per-user")
+    val excludeNotStarted: MutableStateFlow<Boolean> by MigratedConfigValue(
         protoNumber = 25,
         group = SettingGroup.LIBRARY_UPDATES,
         privacySafe = true,
         defaultValue = true,
+        deprecated = userSettingDeprecated,
     )
 
-    val excludeCompleted: MutableStateFlow<Boolean> by BooleanSetting(
+    @Deprecated("Now per-user")
+    val excludeCompleted: MutableStateFlow<Boolean> by MigratedConfigValue(
         protoNumber = 26,
         group = SettingGroup.LIBRARY_UPDATES,
         privacySafe = true,
         defaultValue = true,
+        deprecated = userSettingDeprecated,
     )
 
     val globalUpdateInterval: MutableStateFlow<Double> by DisableableDoubleSetting(
@@ -354,12 +370,13 @@ class ServerConfig(
         description = "Time in hours",
     )
 
-    val updateMangas: MutableStateFlow<Boolean> by BooleanSetting(
+    @Deprecated("Now per-user")
+    val updateMangas: MutableStateFlow<Boolean> by MigratedConfigValue(
         protoNumber = 28,
         group = SettingGroup.LIBRARY_UPDATES,
         privacySafe = true,
         defaultValue = false,
-        description = "Update manga metadata and thumbnail along with the chapter list update during the library update.",
+        deprecated = userSettingDeprecated,
     )
 
     @Deprecated("Will get removed", replaceWith = ReplaceWith("authMode"))
@@ -552,58 +569,68 @@ class ServerConfig(
         defaultValue = false,
     )
 
-    val opdsUseBinaryFileSizes: MutableStateFlow<Boolean> by BooleanSetting(
+    @Deprecated("Now per-user")
+    val opdsUseBinaryFileSizes: MutableStateFlow<Boolean> by MigratedConfigValue(
         protoNumber = 49,
         group = SettingGroup.OPDS,
         privacySafe = true,
         defaultValue = false,
-        description = "Display file size in binary (KiB, MiB, GiB) instead of decimal (KB, MB, GB)",
+        deprecated = userSettingDeprecated,
     )
 
-    val opdsItemsPerPage: MutableStateFlow<Int> by IntSetting(
+    @Deprecated("Now per-user")
+    val opdsItemsPerPage: MutableStateFlow<Int> by MigratedConfigValue(
         protoNumber = 50,
         group = SettingGroup.OPDS,
         privacySafe = true,
         defaultValue = 100,
-        min = 10,
-        max = 5000,
+        deprecated = userSettingDeprecated,
     )
 
-    val opdsEnablePageReadProgress: MutableStateFlow<Boolean> by BooleanSetting(
+    @Deprecated("Now per-user")
+    val opdsEnablePageReadProgress: MutableStateFlow<Boolean> by MigratedConfigValue(
         protoNumber = 51,
         group = SettingGroup.OPDS,
         privacySafe = true,
         defaultValue = true,
+        deprecated = userSettingDeprecated,
     )
 
-    val opdsMarkAsReadOnDownload: MutableStateFlow<Boolean> by BooleanSetting(
+    @Deprecated("Now per-user")
+    val opdsMarkAsReadOnDownload: MutableStateFlow<Boolean> by MigratedConfigValue(
         protoNumber = 52,
         group = SettingGroup.OPDS,
         privacySafe = true,
         defaultValue = false,
+        deprecated = userSettingDeprecated,
     )
 
-    val opdsShowOnlyUnreadChapters: MutableStateFlow<Boolean> by BooleanSetting(
+    @Deprecated("Now per-user")
+    val opdsShowOnlyUnreadChapters: MutableStateFlow<Boolean> by MigratedConfigValue(
         protoNumber = 53,
         group = SettingGroup.OPDS,
         privacySafe = true,
         defaultValue = false,
+        deprecated = userSettingDeprecated,
     )
 
-    val opdsShowOnlyDownloadedChapters: MutableStateFlow<Boolean> by BooleanSetting(
+    @Deprecated("Now per-user")
+    val opdsShowOnlyDownloadedChapters: MutableStateFlow<Boolean> by MigratedConfigValue(
         protoNumber = 54,
         group = SettingGroup.OPDS,
         privacySafe = true,
         defaultValue = false,
+        deprecated = userSettingDeprecated,
     )
 
-    val opdsChapterSortOrder: MutableStateFlow<SortOrder> by EnumSetting(
+    @Deprecated("Now per-user")
+    val opdsChapterSortOrder: MutableStateFlow<SortOrder> by MigratedConfigValue(
         protoNumber = 55,
         group = SettingGroup.OPDS,
         privacySafe = true,
         defaultValue = SortOrder.DESC,
-        enumClass = SortOrder::class,
         typeInfo = SettingsRegistry.PartialTypeInfo(imports = listOf("org.jetbrains.exposed.v1.core.SortOrder")),
+        deprecated = userSettingDeprecated,
     )
 
     val authMode: MutableStateFlow<AuthMode> by EnumSetting(
@@ -616,78 +643,16 @@ class ServerConfig(
         excludeFromBackup = true,
     )
 
-    fun createDownloadConversionsMap(protoNumber: Int, key: String) = MapSetting<String, DownloadConversion>(
+
+    fun createDownloadConversionsMap(
+        protoNumber: Int,
+        key: String,
+    ) = MapSetting<String, DownloadConversion>(
         protoNumber = protoNumber,
         group = SettingGroup.DOWNLOADER,
         privacySafe = false,
         defaultValue = emptyMap(),
-        typeInfo =
-            SettingsRegistry.PartialTypeInfo(
-                specificType = "List<SettingsDownloadConversionType>",
-                interfaceType = "List<SettingsDownloadConversion>",
-                backupType = "List<BackupSettingsDownloadConversionType>",
-                imports =
-                    listOf(
-                        "suwayomi.tachidesk.manga.impl.backup.proto.models.BackupSettingsDownloadConversionType",
-                    ),
-                convertToGqlType = { value ->
-                    @Suppress("UNCHECKED_CAST")
-                    val castedValue = value as Map<String, DownloadConversion>
-
-                    castedValue.map {
-                        SettingsDownloadConversionType(
-                            it.key,
-                            it.value.target,
-                            it.value.compressionLevel,
-                            it.value.callTimeout,
-                            it.value.connectTimeout,
-                            it.value.headers?.map { header ->
-                                SettingsDownloadConversionHeaderType(
-                                    header.key,
-                                    header.value,
-                                )
-                            },
-                        )
-                    }
-                },
-                convertToInternalType = { list ->
-                    @Suppress("UNCHECKED_CAST")
-                    val castedList = list as List<SettingsDownloadConversionType>
-
-                    castedList.associate {
-                        it.mimeType to
-                            DownloadConversion(
-                                target = it.target,
-                                compressionLevel = it.compressionLevel,
-                                callTimeout = it.callTimeout,
-                                connectTimeout = it.connectTimeout,
-                                headers = it.headers?.associate { header ->
-                                    header.name to header.value
-                                },
-                            )
-                    }
-                },
-                convertToBackupType = { value ->
-                    @Suppress("UNCHECKED_CAST")
-                    val castedValue = value as Map<String, DownloadConversion>
-
-                    castedValue.map {
-                        BackupSettingsDownloadConversionType(
-                            it.key,
-                            it.value.target,
-                            it.value.compressionLevel,
-                            it.value.callTimeout,
-                            it.value.connectTimeout,
-                            it.value.headers?.map { header ->
-                                BackupSettingsDownloadConversionHeaderType(
-                                    header.key,
-                                    header.value,
-                                )
-                            },
-                        )
-                    }
-                },
-            ),
+        typeInfo = downloadConversionTypeInfo(),
         description =
             """
             map input mime type to conversion information, or "default" for others
@@ -781,13 +746,14 @@ class ServerConfig(
         ),
     )
 
-    val koreaderSyncChecksumMethod: MutableStateFlow<KoreaderSyncChecksumMethod> by EnumSetting(
+    @Deprecated("Now per-user")
+    val koreaderSyncChecksumMethod: MutableStateFlow<KoreaderSyncChecksumMethod> by MigratedConfigValue(
         protoNumber = 63,
         group = SettingGroup.KOREADER_SYNC,
         privacySafe = true,
         defaultValue = KoreaderSyncChecksumMethod.BINARY,
-        enumClass = KoreaderSyncChecksumMethod::class,
         typeInfo = SettingsRegistry.PartialTypeInfo(imports = listOf("suwayomi.tachidesk.graphql.types.KoreaderSyncChecksumMethod")),
+        deprecated = userSettingDeprecated,
     )
 
     @Suppress("DEPRECATION")
@@ -864,14 +830,13 @@ class ServerConfig(
         },
     )
 
-    val koreaderSyncPercentageTolerance: MutableStateFlow<Double> by DoubleSetting(
+    @Deprecated("Now per-user")
+    val koreaderSyncPercentageTolerance: MutableStateFlow<Double> by MigratedConfigValue(
         protoNumber = 65,
         group = SettingGroup.KOREADER_SYNC,
         privacySafe = true,
         defaultValue = 0.000000000000001,
-        min = 0.000000000000001,
-        max = 1.0,
-        description = "Absolute tolerance for progress comparison",
+        deprecated = userSettingDeprecated,
     )
 
     val jwtTokenExpiry: MutableStateFlow<Duration> by DurationSetting(
@@ -932,24 +897,24 @@ class ServerConfig(
         excludeFromBackup = true,
     )
 
-    val koreaderSyncStrategyForward: MutableStateFlow<KoreaderSyncConflictStrategy> by EnumSetting(
+    @Deprecated("Now per-user")
+    val koreaderSyncStrategyForward: MutableStateFlow<KoreaderSyncConflictStrategy> by MigratedConfigValue(
         protoNumber = 73,
         group = SettingGroup.KOREADER_SYNC,
         privacySafe = true,
         defaultValue = KoreaderSyncConflictStrategy.PROMPT,
-        enumClass = KoreaderSyncConflictStrategy::class,
         typeInfo = SettingsRegistry.PartialTypeInfo(imports = listOf("suwayomi.tachidesk.graphql.types.KoreaderSyncConflictStrategy")),
-        description = "Strategy to apply when remote progress is newer than local.",
+        deprecated = userSettingDeprecated,
     )
 
-    val koreaderSyncStrategyBackward: MutableStateFlow<KoreaderSyncConflictStrategy> by EnumSetting(
+    @Deprecated("Now per-user")
+    val koreaderSyncStrategyBackward: MutableStateFlow<KoreaderSyncConflictStrategy> by MigratedConfigValue(
         protoNumber = 74,
         group = SettingGroup.KOREADER_SYNC,
         privacySafe = true,
         defaultValue = KoreaderSyncConflictStrategy.DISABLED,
-        enumClass = KoreaderSyncConflictStrategy::class,
         typeInfo = SettingsRegistry.PartialTypeInfo(imports = listOf("suwayomi.tachidesk.graphql.types.KoreaderSyncConflictStrategy")),
-        description = "Strategy to apply when remote progress is older than local.",
+        deprecated = userSettingDeprecated,
     )
 
     val webUISubpath: MutableStateFlow<String> by StringSetting(
@@ -1012,20 +977,24 @@ class ServerConfig(
         defaultValue = BackupFlags.DEFAULT.includeServerSettings,
     )
 
-    val opdsCbzMimetype: MutableStateFlow<CbzMediaType> by EnumSetting(
+    @Deprecated("Now per-user")
+    val opdsCbzMimetype: MutableStateFlow<CbzMediaType> by MigratedConfigValue(
         protoNumber = 83,
         group = SettingGroup.OPDS,
         privacySafe = true,
         defaultValue = CbzMediaType.MODERN,
-        enumClass = CbzMediaType::class,
         typeInfo = SettingsRegistry.PartialTypeInfo(imports = listOf("suwayomi.tachidesk.graphql.types.CbzMediaType")),
-        excludeFromBackup = true,
-        description = "Controls the MimeType that Suwayomi sends in OPDS entries for CBZ archives. Also affects global CBZ download. Modern follows recent IANA standard (2017), while LEGACY (deprecated mimetype for .cbz) and COMPATIBLE (deprecated mimetype for all comic archives) might be more compatible with older clients.",
+        deprecated = userSettingDeprecated,
     )
 
-    val serveConversions: MutableStateFlow<Map<String, DownloadConversion>> by createDownloadConversionsMap(
+    @Deprecated("Now per-user")
+    val serveConversions: MutableStateFlow<Map<String, DownloadConversion>> by MigratedConfigValue(
         protoNumber = 84,
-        key = "serveConversions"
+        deprecated = userSettingDeprecated,
+        group = SettingGroup.DOWNLOADER,
+        privacySafe = false,
+        defaultValue = emptyMap(),
+        typeInfo = downloadConversionTypeInfo(),
     )
 
     val useHikariConnectionPool: MutableStateFlow<Boolean> by BooleanSetting(
@@ -1050,78 +1019,97 @@ class ServerConfig(
             return@BooleanSetting null
         },
         toValidValue = { !Platform.current.os.isMacOS && it },
-        description = "Enable the WebView via CEF (Chromium) - Not supported on MacOS",
+        description = "Enable CEF for the embedded WebView and as a fallback for extension WebViews - Not supported on MacOS",
     )
 
-    val syncYomiEnabled: MutableStateFlow<Boolean> by BooleanSetting(
+    @Deprecated("Now per-user")
+    val syncYomiEnabled: MutableStateFlow<Boolean> by MigratedConfigValue(
         protoNumber = 87,
         defaultValue = false,
         group = SettingGroup.SYNCYOMI,
-        privacySafe = true
+        privacySafe = true,
+        deprecated = userSettingDeprecated,
     )
 
-    val syncYomiHost: MutableStateFlow<String> by StringSetting(
+    @Deprecated("Now per-user")
+    val syncYomiHost: MutableStateFlow<String> by MigratedConfigValue(
         protoNumber = 88,
         defaultValue = "",
         group = SettingGroup.SYNCYOMI,
         privacySafe = false,
+        deprecated = userSettingDeprecated,
     )
 
-    val syncYomiApiKey: MutableStateFlow<String> by StringSetting(
+    @Deprecated("Now per-user")
+    val syncYomiApiKey: MutableStateFlow<String> by MigratedConfigValue(
         protoNumber = 89,
         defaultValue = "",
         group = SettingGroup.SYNCYOMI,
         privacySafe = false,
+        deprecated = userSettingDeprecated,
     )
 
-    val syncDataManga: MutableStateFlow<Boolean> by BooleanSetting(
+    @Deprecated("Now per-user")
+    val syncDataManga: MutableStateFlow<Boolean> by MigratedConfigValue(
         protoNumber = 90,
         defaultValue = true,
         group = SettingGroup.SYNCYOMI,
         privacySafe = true,
+        deprecated = userSettingDeprecated,
     )
 
-    val syncDataChapters: MutableStateFlow<Boolean> by BooleanSetting(
+    @Deprecated("Now per-user")
+    val syncDataChapters: MutableStateFlow<Boolean> by MigratedConfigValue(
         protoNumber = 91,
         defaultValue = true,
         group = SettingGroup.SYNCYOMI,
         privacySafe = true,
+        deprecated = userSettingDeprecated,
     )
 
-    val syncDataTracking: MutableStateFlow<Boolean> by BooleanSetting(
+    @Deprecated("Now per-user")
+    val syncDataTracking: MutableStateFlow<Boolean> by MigratedConfigValue(
         protoNumber = 92,
         defaultValue = true,
         group = SettingGroup.SYNCYOMI,
         privacySafe = true,
+        deprecated = userSettingDeprecated,
     )
 
-    val syncDataHistory: MutableStateFlow<Boolean> by BooleanSetting(
+    @Deprecated("Now per-user")
+    val syncDataHistory: MutableStateFlow<Boolean> by MigratedConfigValue(
         protoNumber = 93,
         defaultValue = true,
         group = SettingGroup.SYNCYOMI,
         privacySafe = true,
+        deprecated = userSettingDeprecated,
     )
 
-    val syncDataCategories: MutableStateFlow<Boolean> by BooleanSetting(
+    @Deprecated("Now per-user")
+    val syncDataCategories: MutableStateFlow<Boolean> by MigratedConfigValue(
         protoNumber = 94,
         defaultValue = true,
         group = SettingGroup.SYNCYOMI,
         privacySafe = true,
+        deprecated = userSettingDeprecated,
     )
 
-    val syncInterval: MutableStateFlow<Duration> by DurationSetting(
+    @Deprecated("Now per-user")
+    val syncInterval: MutableStateFlow<Duration> by MigratedConfigValue(
         protoNumber = 95,
         defaultValue = 0.seconds,
         group = SettingGroup.SYNCYOMI,
         privacySafe = true,
+        deprecated = userSettingDeprecated,
     )
 
-    val opdsSkipChapterMetadataFeed: MutableStateFlow<Boolean> by BooleanSetting(
+    @Deprecated("Now per-user")
+    val opdsSkipChapterMetadataFeed: MutableStateFlow<Boolean> by MigratedConfigValue(
         protoNumber = 96,
         group = SettingGroup.OPDS,
         privacySafe = true,
         defaultValue = false,
-        description = "Skips the metadata feed and provides download/stream links directly in the chapter list. Improves compatibility with KOReader auto-downloader. KoSync strategies are applied, but PROMPT conflicts are ignored (treating local progress as priority)."
+        deprecated = userSettingDeprecated,
     )
 
     val extensionStores: MutableStateFlow<List<String>> by ListSetting<String>(
@@ -1145,6 +1133,495 @@ class ServerConfig(
                 specificType = "List<String>",
             ),
         description = "List of extension store index URLs",
+    )
+
+    val autoUpdateExtensions: MutableStateFlow<Boolean> by BooleanSetting(
+        protoNumber = 139,
+        group = SettingGroup.EXTENSION,
+        privacySafe = true,
+        defaultValue = false,
+        description = "Automatically update installed extensions from configured stores every 24 hours",
+    )
+
+    val archiveStagingPath: MutableStateFlow<String> by PathSetting(
+        protoNumber = 98,
+        group = SettingGroup.ARCHIVAL,
+        privacySafe = false,
+        defaultValue = "",
+        mustExist = true,
+        excludeFromBackup = true,
+        requiresRestart = true,
+        description = "Local staging root for chapter revision candidates; blank uses <data root>/staging",
+    )
+
+    val archivePath: MutableStateFlow<String> by PathSetting(
+        protoNumber = 99,
+        group = SettingGroup.ARCHIVAL,
+        privacySafe = false,
+        defaultValue = "",
+        mustExist = true,
+        excludeFromBackup = true,
+        requiresRestart = true,
+        description = "Archive root for immutable chapter revision artifacts; blank uses <data root>/archive",
+    )
+
+    val archiveRcloneRemote: MutableStateFlow<String> by StringSetting(
+        protoNumber = 100,
+        group = SettingGroup.ARCHIVAL,
+        privacySafe = false,
+        defaultValue = "",
+        maxLength = 1024,
+        excludeFromBackup = true,
+        requiresRestart = true,
+        description =
+            "rclone remote spec that is queried directly to confirm archival durability, " +
+                "e.g. 'remote:bucket/library'; blank leaves revisions unverified at REMOTE_PENDING",
+    )
+
+    val archiveRcloneExecutable: MutableStateFlow<String> by StringSetting(
+        protoNumber = 101,
+        group = SettingGroup.ARCHIVAL,
+        privacySafe = true,
+        defaultValue = "rclone",
+        maxLength = 1024,
+        excludeFromBackup = true,
+        requiresRestart = true,
+        description = "rclone executable used for remote archival durability verification",
+    )
+
+    val archiveVerificationRetrySeconds: MutableStateFlow<Int> by IntSetting(
+        protoNumber = 102,
+        group = SettingGroup.ARCHIVAL,
+        privacySafe = true,
+        defaultValue = 300,
+        min = 30,
+        excludeFromBackup = true,
+        description = "Seconds between remote durability re-checks of a revision that is not visible yet",
+    )
+
+    val archiveVerificationTimeoutSeconds: MutableStateFlow<Int> by IntSetting(
+        protoNumber = 103,
+        group = SettingGroup.ARCHIVAL,
+        privacySafe = true,
+        defaultValue = 30,
+        min = 5,
+        max = 600,
+        excludeFromBackup = true,
+        description = "Timeout in seconds for a single remote durability verification command",
+    )
+
+    val acceptedRevisionRetention: MutableStateFlow<Int> by IntSetting(
+        protoNumber = 104,
+        group = SettingGroup.ARCHIVAL,
+        privacySafe = true,
+        defaultValue = 3,
+        min = -1,
+        requiresRestart = false,
+        description =
+            "Superseded accepted revisions kept per chapter in addition to the active one; " +
+                "-1 keeps every accepted revision, 0 keeps only the active one",
+    )
+
+    val archiveDefaultAcquisitionPolicy: MutableStateFlow<String> by StringSetting(
+        protoNumber = 138,
+        group = SettingGroup.ARCHIVAL,
+        privacySafe = true,
+        defaultValue = "MANUAL",
+        pattern = Regex("^(AUTO|MANUAL|PAUSED)$"),
+        requiresRestart = false,
+        description =
+            "Acquisition policy a series inherits while it has no per-series override; " +
+                "AUTO acquires and archives automatically, MANUAL requires approval, PAUSED is inert",
+    )
+
+    val komgaBaseUrl: MutableStateFlow<String> by StringSetting(
+        protoNumber = 105,
+        group = SettingGroup.ARCHIVAL,
+        privacySafe = false,
+        defaultValue = "",
+        maxLength = 1024,
+        excludeFromBackup = true,
+        requiresRestart = false,
+        description =
+            "Base URL of the Komga instance the published archive is rescanned on, e.g. " +
+                "'http://komga:25600'; a reverse-proxy base path is kept; blank disables Komga integration",
+    )
+
+    val komgaApiKey: MutableStateFlow<String> by StringSetting(
+        protoNumber = 106,
+        group = SettingGroup.ARCHIVAL,
+        privacySafe = false,
+        secret = true,
+        defaultValue = "",
+        maxLength = 1024,
+        excludeFromBackup = true,
+        requiresRestart = false,
+        description =
+            "Komga API key, sent as the X-API-Key header and never persisted or reported back; " +
+                "blank sends no key, which is only correct for a Komga without authentication",
+    )
+
+    val komgaLibraryId: MutableStateFlow<String> by StringSetting(
+        protoNumber = 107,
+        group = SettingGroup.ARCHIVAL,
+        privacySafe = false,
+        defaultValue = "",
+        maxLength = 1024,
+        excludeFromBackup = true,
+        requiresRestart = false,
+        description =
+            "Id of the single Komga library the published archive belongs to; blank disables Komga integration",
+    )
+
+    val komgaRescanDebounceSeconds: MutableStateFlow<Int> by IntSetting(
+        protoNumber = 108,
+        group = SettingGroup.ARCHIVAL,
+        privacySafe = true,
+        defaultValue = 15,
+        min = 0,
+        max = 3600,
+        excludeFromBackup = true,
+        description =
+            "Quiet period in seconds a Komga rescan waits for after the last publication, " +
+                "so a burst of published chapters results in a single scan",
+    )
+
+    val komgaRescanRetrySeconds: MutableStateFlow<Int> by IntSetting(
+        protoNumber = 109,
+        group = SettingGroup.ARCHIVAL,
+        privacySafe = true,
+        defaultValue = 300,
+        min = 30,
+        max = 86400,
+        excludeFromBackup = true,
+        description = "Seconds between retries of a Komga scan that failed transiently",
+    )
+
+    val komgaRequestTimeoutSeconds: MutableStateFlow<Int> by IntSetting(
+        protoNumber = 110,
+        group = SettingGroup.ARCHIVAL,
+        privacySafe = true,
+        defaultValue = 30,
+        min = 5,
+        max = 600,
+        excludeFromBackup = true,
+        description = "Timeout in seconds for a single Komga scan request",
+    )
+
+    val archiveBootstrapInterItemDelaySeconds: MutableStateFlow<Int> by IntSetting(
+        protoNumber = 111,
+        group = SettingGroup.ARCHIVAL,
+        privacySafe = true,
+        defaultValue = 2,
+        min = 0,
+        max = 3600,
+        excludeFromBackup = true,
+        description =
+            "Seconds a running archive bootstrap waits between two series, so a 3,435 series " +
+                "backfill is spread out instead of refreshing every source at once",
+    )
+
+    val archiveBootstrapRetrySeconds: MutableStateFlow<Int> by IntSetting(
+        protoNumber = 112,
+        group = SettingGroup.ARCHIVAL,
+        privacySafe = true,
+        defaultValue = 300,
+        min = 30,
+        max = 86400,
+        excludeFromBackup = true,
+        description = "Seconds before a series of an archive bootstrap whose refresh failed is retried",
+    )
+
+    val archiveBootstrapMaxAttempts: MutableStateFlow<Int> by IntSetting(
+        protoNumber = 113,
+        group = SettingGroup.ARCHIVAL,
+        privacySafe = true,
+        defaultValue = 3,
+        min = 1,
+        max = 100,
+        excludeFromBackup = true,
+        description =
+            "Attempts a series of an archive bootstrap gets before it is reported as failed; " +
+                "a source that is not installed is reported separately and never consumes attempts",
+    )
+
+    val chapterRevisionSweepEnabled: MutableStateFlow<Boolean> by BooleanSetting(
+        protoNumber = 114,
+        group = SettingGroup.ARCHIVAL,
+        privacySafe = true,
+        defaultValue = true,
+        excludeFromBackup = false,
+        description =
+            "Whether the newest chapters of every tracked series are re-checked on a schedule; " +
+                "a source exposes no revision id, so re-fetching the content is the only way to " +
+                "notice a re-release",
+    )
+
+    val chapterRevisionSweepIntervalDays: MutableStateFlow<Int> by IntSetting(
+        protoNumber = 115,
+        group = SettingGroup.ARCHIVAL,
+        privacySafe = true,
+        defaultValue = 30,
+        min = 1,
+        max = 3650,
+        excludeFromBackup = false,
+        description =
+            "Days between two automatic revision sweeps; shortening it pulls the pending sweep in, " +
+                "lengthening it never postpones one that is already scheduled",
+    )
+
+    val chapterRevisionSweepNewestChapters: MutableStateFlow<Int> by IntSetting(
+        protoNumber = 116,
+        group = SettingGroup.ARCHIVAL,
+        privacySafe = true,
+        defaultValue = 10,
+        min = 1,
+        max = 1000,
+        excludeFromBackup = false,
+        description = "Newest chapters per series an automatic or recent-only sweep re-checks",
+    )
+
+    val chapterRevisionSweepItemDelaySeconds: MutableStateFlow<Int> by IntSetting(
+        protoNumber = 117,
+        group = SettingGroup.ARCHIVAL,
+        privacySafe = true,
+        defaultValue = 2,
+        min = 0,
+        max = 3600,
+        excludeFromBackup = true,
+        description =
+            "Seconds a running revision sweep waits between two chapters, so re-checking the newest " +
+                "chapters of a large library does not become one burst of source requests",
+    )
+
+    val chapterRevisionSweepRetrySeconds: MutableStateFlow<Int> by IntSetting(
+        protoNumber = 118,
+        group = SettingGroup.ARCHIVAL,
+        privacySafe = true,
+        defaultValue = 300,
+        min = 30,
+        max = 86400,
+        excludeFromBackup = true,
+        description = "Seconds before a chapter of a revision sweep whose attempt failed is retried",
+    )
+
+    val chapterRevisionSweepMaxAttempts: MutableStateFlow<Int> by IntSetting(
+        protoNumber = 119,
+        group = SettingGroup.ARCHIVAL,
+        privacySafe = true,
+        defaultValue = 3,
+        min = 1,
+        max = 100,
+        excludeFromBackup = true,
+        description = "Attempts a chapter of a revision sweep gets before it is reported as failed",
+    )
+
+    val chapterRevisionVisualHashThreshold: MutableStateFlow<Int> by IntSetting(
+        protoNumber = 120,
+        group = SettingGroup.ARCHIVAL,
+        privacySafe = true,
+        defaultValue = 2,
+        min = 0,
+        max = 64,
+        excludeFromBackup = false,
+        description =
+            "Maximum Hamming distance between two page fingerprints that still counts as visually " +
+                "equivalent; conservative by default, because a larger value makes collisions between " +
+                "genuinely different pages more likely",
+    )
+
+    val chapterRevisionAutoDismissVisuallyEquivalent: MutableStateFlow<Boolean> by BooleanSetting(
+        protoNumber = 121,
+        group = SettingGroup.ARCHIVAL,
+        privacySafe = true,
+        defaultValue = false,
+        excludeFromBackup = false,
+        description =
+            "Dismiss a revision automatically when every page is visually equivalent to the active " +
+                "revision; disabled by default so perceptually similar content is still reviewed",
+    )
+
+    val chapterRevisionVisualAnalysisRetrySeconds: MutableStateFlow<Int> by IntSetting(
+        protoNumber = 122,
+        group = SettingGroup.ARCHIVAL,
+        privacySafe = true,
+        defaultValue = 300,
+        min = 30,
+        max = 86400,
+        excludeFromBackup = true,
+        description = "Seconds before a visual page comparison whose attempt failed is retried",
+    )
+
+    val chapterRevisionVisualAnalysisMaxAttempts: MutableStateFlow<Int> by IntSetting(
+        protoNumber = 123,
+        group = SettingGroup.ARCHIVAL,
+        privacySafe = true,
+        defaultValue = 3,
+        min = 1,
+        max = 100,
+        excludeFromBackup = true,
+        description =
+            "Attempts a visual page comparison gets before the revision proceeds to archival with a " +
+                "failed comparison recorded",
+    )
+
+    val chapterRevisionThumbnailMaxDimension: MutableStateFlow<Int> by IntSetting(
+        protoNumber = 124,
+        group = SettingGroup.ARCHIVAL,
+        privacySafe = true,
+        defaultValue = 480,
+        min = 64,
+        max = 2048,
+        excludeFromBackup = true,
+        description = "Longest edge in pixels of a review thumbnail rendered for a changed page",
+    )
+
+    val chapterIntegrityAuditEnabled: MutableStateFlow<Boolean> by BooleanSetting(
+        protoNumber = 125,
+        group = SettingGroup.ARCHIVAL,
+        privacySafe = true,
+        defaultValue = false,
+        excludeFromBackup = false,
+        description =
+            "Whether the archived artifacts are re-checked against remote storage on a schedule; " +
+                "disabled by default because every check is one command against the remote, and a " +
+                "manual audit is always available",
+    )
+
+    val chapterIntegrityAuditIntervalDays: MutableStateFlow<Int> by IntSetting(
+        protoNumber = 126,
+        group = SettingGroup.ARCHIVAL,
+        privacySafe = true,
+        defaultValue = 90,
+        min = 1,
+        max = 3650,
+        excludeFromBackup = false,
+        description =
+            "Days between two automatic archive integrity audits; shortening it pulls the pending " +
+                "audit in, lengthening it never postpones one that is already scheduled",
+    )
+
+    val chapterIntegrityAuditRecentRevisions: MutableStateFlow<Int> by IntSetting(
+        protoNumber = 127,
+        group = SettingGroup.ARCHIVAL,
+        privacySafe = true,
+        defaultValue = 10,
+        min = 1,
+        max = 1000,
+        excludeFromBackup = false,
+        description =
+            "Newest archived revisions per series an automatic or recent-only integrity audit " +
+                "re-checks; a full-history audit is only ever a manual request",
+    )
+
+    val chapterIntegrityAuditItemDelaySeconds: MutableStateFlow<Int> by IntSetting(
+        protoNumber = 128,
+        group = SettingGroup.ARCHIVAL,
+        privacySafe = true,
+        defaultValue = 2,
+        min = 0,
+        max = 3600,
+        excludeFromBackup = true,
+        description =
+            "Seconds a running integrity audit waits between two revisions, so re-checking a large " +
+                "library does not become one burst of remote commands",
+    )
+
+    val chapterIntegrityAuditRetrySeconds: MutableStateFlow<Int> by IntSetting(
+        protoNumber = 129,
+        group = SettingGroup.ARCHIVAL,
+        privacySafe = true,
+        defaultValue = 300,
+        min = 30,
+        max = 86400,
+        excludeFromBackup = true,
+        description = "Seconds before a revision of an integrity audit whose check was inconclusive is retried",
+    )
+
+    val chapterIntegrityAuditMaxAttempts: MutableStateFlow<Int> by IntSetting(
+        protoNumber = 130,
+        group = SettingGroup.ARCHIVAL,
+        privacySafe = true,
+        defaultValue = 3,
+        min = 1,
+        max = 100,
+        excludeFromBackup = true,
+        description =
+            "Attempts a revision of an integrity audit gets before the check is reported as failed; " +
+                "only a positive absence answer turns an exhausted retry into a missing-payload finding",
+    )
+
+    val archiveDirectDeliveryEnabled: MutableStateFlow<Boolean> by BooleanSetting(
+        protoNumber = 131,
+        group = SettingGroup.ARCHIVAL,
+        privacySafe = true,
+        defaultValue = false,
+        excludeFromBackup = true,
+        description =
+            "Serve an archived revision through a short-lived link generated on the configured rclone " +
+                "remote instead of streaming the mounted copy; disabled by default, because a client that " +
+                "follows the link then fetches the payload straight from the object store",
+    )
+
+    val archiveDirectDeliveryExpirySeconds: MutableStateFlow<Int> by IntSetting(
+        protoNumber = 132,
+        group = SettingGroup.ARCHIVAL,
+        privacySafe = true,
+        defaultValue = 300,
+        min = 60,
+        max = 3600,
+        excludeFromBackup = true,
+        description =
+            "Seconds a generated direct-delivery link is asked to stay valid for; an object store may " +
+                "honour it less precisely, so the link is never the only way a revision can be fetched",
+    )
+
+    val archiveDirectDeliveryFallbackToLocal: MutableStateFlow<Boolean> by BooleanSetting(
+        protoNumber = 133,
+        group = SettingGroup.ARCHIVAL,
+        privacySafe = true,
+        defaultValue = true,
+        excludeFromBackup = true,
+        description =
+            "Stream the immutable mounted archive copy when direct delivery is disabled or a link cannot " +
+                "be generated; disabling it makes a revision downloadable only through a direct link",
+    )
+
+    val archiveDirectDeliveryRequireExpiryEvidence: MutableStateFlow<Boolean> by BooleanSetting(
+        protoNumber = 134,
+        group = SettingGroup.ARCHIVAL,
+        privacySafe = true,
+        defaultValue = true,
+        excludeFromBackup = true,
+        description =
+            "Only redirect a client to a generated link whose signed query proves a bounded expiry within " +
+                "archiveDirectDeliveryExpirySeconds; rclone documents that a backend without expiry support " +
+                "ignores --expire and answers with a link that never expires, so disabling this hands out " +
+                "such a credential whenever the backend's expiry cannot be read here",
+    )
+
+    val autoBackupIncludeUserSettings: MutableStateFlow<Boolean> by BooleanSetting(
+        protoNumber = 140,
+        group = SettingGroup.BACKUP,
+        privacySafe = true,
+        defaultValue = BackupFlags.DEFAULT.includeUserSettings,
+    )
+
+    val hikariMaxPoolSize: MutableStateFlow<Int> by IntSetting(
+        protoNumber = 141,
+        group = SettingGroup.DATABASE,
+        privacySafe = true,
+        defaultValue = 6,
+        min = 1,
+        description = "the maximum number of actual connections to the database; see https://github.com/brettwooldridge/HikariCP/wiki/About-Pool-Sizing",
+    )
+
+    val databaseSchema: MutableStateFlow<String> by StringSetting(
+        protoNumber = 142,
+        group = SettingGroup.DATABASE,
+        privacySafe = true,
+        defaultValue = "suwayomi",
+        minLength = 1,
     )
 
     /** ****************************************************************** **/
@@ -1183,6 +1660,43 @@ class ServerConfig(
             ),
         readMigrated = { authPassword.value },
         setMigrated = { authPassword.value = it },
+    )
+
+    val webViewProvider: MutableStateFlow<WebViewProvider> by EnumSetting(
+        protoNumber = 135,
+        group = SettingGroup.WEB_VIEW,
+        privacySafe = true,
+        defaultValue = WebViewProvider.CEF,
+        enumClass = WebViewProvider::class,
+        typeInfo = SettingsRegistry.PartialTypeInfo(imports = listOf("suwayomi.tachidesk.graphql.types.WebViewProvider")),
+        description =
+            "Which browser backs the user-facing WebView: the one embedded in the server, or one running in " +
+                "the external browser service and shown through web VNC. Extension WebViews use CEF or a configured Prowl CDP connection",
+    )
+
+    val webViewVncUrl: MutableStateFlow<String> by StringSetting(
+        protoNumber = 136,
+        group = SettingGroup.WEB_VIEW,
+        privacySafe = true,
+        defaultValue = "http://vnc:6080",
+        pattern = Regex("^https?://[^\\s/]+.*$"),
+        maxLength = 512,
+        description =
+            "Address of the external browser service's web VNC endpoint, used when the WebView " +
+                "provider is not the embedded browser",
+    )
+
+    val webViewOpenTimeout: MutableStateFlow<Int> by IntSetting(
+        protoNumber = 137,
+        group = SettingGroup.WEB_VIEW,
+        privacySafe = true,
+        defaultValue = 180,
+        min = 10,
+        max = 3600,
+        description =
+            "Seconds opening a page in the external browser may take. It is its own setting because " +
+                "it is a different shape of work from the challenge solver's budget: a browser start, " +
+                "a navigation and a solve, which have to fit inside one call",
     )
 
     @OptIn(ExperimentalCoroutinesApi::class)

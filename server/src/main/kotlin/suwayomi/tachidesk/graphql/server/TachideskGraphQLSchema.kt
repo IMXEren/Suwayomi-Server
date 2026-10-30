@@ -19,15 +19,25 @@ import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
+import suwayomi.tachidesk.graphql.directives.RequireArchiveOwnerDirectiveWiring
 import suwayomi.tachidesk.graphql.directives.RequireAuthDirectiveWiring
+import suwayomi.tachidesk.graphql.directives.RequirePermissionsDirectiveWiring
+import suwayomi.tachidesk.graphql.mutations.ArchiveBootstrapMutation
 import suwayomi.tachidesk.graphql.mutations.BackupMutation
+import suwayomi.tachidesk.graphql.mutations.BackupRestoreMutation
+import suwayomi.tachidesk.graphql.mutations.CanonicalIdentityMutation
 import suwayomi.tachidesk.graphql.mutations.CategoryMutation
+import suwayomi.tachidesk.graphql.mutations.ChapterIntegrityAuditMutation
 import suwayomi.tachidesk.graphql.mutations.ChapterMutation
+import suwayomi.tachidesk.graphql.mutations.ChapterRevisionMutation
+import suwayomi.tachidesk.graphql.mutations.ChapterRevisionRollbackMutation
+import suwayomi.tachidesk.graphql.mutations.ChapterRevisionSweepMutation
 import suwayomi.tachidesk.graphql.mutations.DownloadMutation
 import suwayomi.tachidesk.graphql.mutations.ExtensionMutation
 import suwayomi.tachidesk.graphql.mutations.ExtensionStoreMutation
 import suwayomi.tachidesk.graphql.mutations.ImageMutation
 import suwayomi.tachidesk.graphql.mutations.InfoMutation
+import suwayomi.tachidesk.graphql.mutations.KomgaMutation
 import suwayomi.tachidesk.graphql.mutations.KoreaderSyncMutation
 import suwayomi.tachidesk.graphql.mutations.MangaMutation
 import suwayomi.tachidesk.graphql.mutations.MetaMutation
@@ -37,14 +47,23 @@ import suwayomi.tachidesk.graphql.mutations.SyncMutation
 import suwayomi.tachidesk.graphql.mutations.TrackMutation
 import suwayomi.tachidesk.graphql.mutations.UpdateMutation
 import suwayomi.tachidesk.graphql.mutations.UserMutation
+import suwayomi.tachidesk.graphql.mutations.UserSettingsMutation
 import suwayomi.tachidesk.graphql.mutations.WebviewMutation
+import suwayomi.tachidesk.graphql.queries.ArchiveBootstrapQuery
 import suwayomi.tachidesk.graphql.queries.BackupQuery
+import suwayomi.tachidesk.graphql.queries.BackupRestoreQuery
+import suwayomi.tachidesk.graphql.queries.CanonicalIdentityQuery
 import suwayomi.tachidesk.graphql.queries.CategoryQuery
+import suwayomi.tachidesk.graphql.queries.ChapterIntegrityAuditQuery
 import suwayomi.tachidesk.graphql.queries.ChapterQuery
+import suwayomi.tachidesk.graphql.queries.ChapterRevisionQuery
+import suwayomi.tachidesk.graphql.queries.ChapterRevisionRollbackQuery
+import suwayomi.tachidesk.graphql.queries.ChapterRevisionSweepQuery
 import suwayomi.tachidesk.graphql.queries.DownloadQuery
 import suwayomi.tachidesk.graphql.queries.ExtensionQuery
 import suwayomi.tachidesk.graphql.queries.ExtensionStoreQuery
 import suwayomi.tachidesk.graphql.queries.InfoQuery
+import suwayomi.tachidesk.graphql.queries.KomgaQuery
 import suwayomi.tachidesk.graphql.queries.KoreaderSyncQuery
 import suwayomi.tachidesk.graphql.queries.MangaQuery
 import suwayomi.tachidesk.graphql.queries.MetaQuery
@@ -53,6 +72,9 @@ import suwayomi.tachidesk.graphql.queries.SourceQuery
 import suwayomi.tachidesk.graphql.queries.SyncQuery
 import suwayomi.tachidesk.graphql.queries.TrackQuery
 import suwayomi.tachidesk.graphql.queries.UpdateQuery
+import suwayomi.tachidesk.graphql.queries.UserQuery
+import suwayomi.tachidesk.graphql.queries.UserSettingsQuery
+import suwayomi.tachidesk.graphql.queries.WebviewQuery
 import suwayomi.tachidesk.graphql.server.primitives.Cursor
 import suwayomi.tachidesk.graphql.server.primitives.GraphQLCursor
 import suwayomi.tachidesk.graphql.server.primitives.GraphQLDurationAsString
@@ -69,7 +91,12 @@ import kotlin.time.Duration
 class CustomSchemaGeneratorHooks : FlowSubscriptionSchemaGeneratorHooks() {
     override val wiringFactory =
         KotlinDirectiveWiringFactory(
-            manualWiring = mapOf("requireAuth" to RequireAuthDirectiveWiring()),
+            manualWiring =
+                mapOf(
+                    "requireAuth" to RequireAuthDirectiveWiring(),
+                    "requireArchiveOwner" to RequireArchiveOwnerDirectiveWiring(),
+                    "requirePermissions" to RequirePermissionsDirectiveWiring(),
+                ),
         )
 
     override fun willGenerateGraphQLType(type: KType): GraphQLType? =
@@ -101,14 +128,22 @@ object GraphQLSchemaProvider {
                     ),
                 queries =
                     listOf(
+                        TopLevelObject(ArchiveBootstrapQuery()),
                         TopLevelObject(BackupQuery()),
+                        TopLevelObject(BackupRestoreQuery()),
+                        TopLevelObject(CanonicalIdentityQuery()),
                         TopLevelObject(CategoryQuery()),
                         TopLevelObject(ChapterQuery()),
+                        TopLevelObject(ChapterRevisionQuery()),
+                        TopLevelObject(ChapterRevisionSweepQuery()),
+                        TopLevelObject(ChapterIntegrityAuditQuery()),
+                        TopLevelObject(ChapterRevisionRollbackQuery()),
                         TopLevelObject(DownloadQuery()),
                         TopLevelObject(ExtensionQuery()),
                         TopLevelObject(ExtensionStoreQuery()),
                         TopLevelObject(InfoQuery()),
                         TopLevelObject(KoreaderSyncQuery()),
+                        TopLevelObject(KomgaQuery()),
                         TopLevelObject(MangaQuery()),
                         TopLevelObject(MetaQuery()),
                         TopLevelObject(SettingsQuery()),
@@ -116,18 +151,29 @@ object GraphQLSchemaProvider {
                         TopLevelObject(SyncQuery()),
                         TopLevelObject(TrackQuery()),
                         TopLevelObject(UpdateQuery()),
+                        TopLevelObject(UserQuery()),
+                        TopLevelObject(UserSettingsQuery()),
+                        TopLevelObject(WebviewQuery()),
                     ),
                 mutations =
                     listOf(
+                        TopLevelObject(ArchiveBootstrapMutation()),
                         TopLevelObject(BackupMutation()),
+                        TopLevelObject(BackupRestoreMutation()),
+                        TopLevelObject(CanonicalIdentityMutation()),
                         TopLevelObject(CategoryMutation()),
                         TopLevelObject(ChapterMutation()),
+                        TopLevelObject(ChapterRevisionMutation()),
+                        TopLevelObject(ChapterRevisionSweepMutation()),
+                        TopLevelObject(ChapterIntegrityAuditMutation()),
+                        TopLevelObject(ChapterRevisionRollbackMutation()),
                         TopLevelObject(DownloadMutation()),
                         TopLevelObject(ExtensionMutation()),
                         TopLevelObject(ExtensionStoreMutation()),
                         TopLevelObject(ImageMutation()),
                         TopLevelObject(InfoMutation()),
                         TopLevelObject(KoreaderSyncMutation()),
+                        TopLevelObject(KomgaMutation()),
                         TopLevelObject(MangaMutation()),
                         TopLevelObject(MetaMutation()),
                         TopLevelObject(SettingsMutation()),
@@ -136,6 +182,7 @@ object GraphQLSchemaProvider {
                         TopLevelObject(TrackMutation()),
                         TopLevelObject(UpdateMutation()),
                         TopLevelObject(UserMutation()),
+                        TopLevelObject(UserSettingsMutation()),
                         TopLevelObject(WebviewMutation()),
                     ),
                 subscriptions =

@@ -1,5 +1,6 @@
 package suwayomi.tachidesk.server.settings.generation
 
+import suwayomi.tachidesk.server.settings.SettingGroup
 import suwayomi.tachidesk.server.settings.SettingsRegistry
 import java.io.File
 
@@ -39,6 +40,7 @@ object SettingsBackupSettingsHandlerGenerator {
                     "suwayomi.tachidesk.manga.impl.backup.proto.models.BackupServerSettings",
                     "suwayomi.tachidesk.server.serverConfig",
                     "suwayomi.tachidesk.server.settings.SettingsRegistry",
+                    "suwayomi.tachidesk.server.user.ARCHIVE_OWNER_ID",
                 ),
                 settings,
             ),
@@ -60,7 +62,7 @@ object SettingsBackupSettingsHandlerGenerator {
         val indentation = 4
         val contentIndentation = indentation * 2
 
-        appendLine("fun backup(flags: BackupFlags): BackupServerSettings? {".addIndentation(indentation))
+        appendLine("fun backup(flags: BackupFlags, userId: Int): BackupServerSettings? {".addIndentation(indentation))
         appendLine("if (!flags.includeServerSettings) { return null }".addIndentation(contentIndentation))
         appendLine()
         appendLine("return BackupServerSettings(".addIndentation(contentIndentation))
@@ -73,7 +75,7 @@ object SettingsBackupSettingsHandlerGenerator {
         val indentation = 4
         val contentIndentation = indentation * 2
 
-        appendLine("fun restore(backupServerSettings: BackupServerSettings?) {".addIndentation(indentation))
+        appendLine("fun restore(backupServerSettings: BackupServerSettings?, userId: Int) {".addIndentation(indentation))
         appendLine("if (backupServerSettings == null) { return }".addIndentation(contentIndentation))
         appendLine()
         appendLine("SettingsUpdater.updateAll(".addIndentation(contentIndentation))
@@ -94,6 +96,8 @@ object SettingsBackupSettingsHandlerGenerator {
             )
         }
         appendLine("),".addIndentation(indentation * 3))
+        appendLine("userId,".addIndentation(indentation * 3))
+        appendLine("skipArchival = userId != ARCHIVE_OWNER_ID,".addIndentation(indentation * 3))
         appendLine(")".addIndentation(contentIndentation))
         appendLine("}".addIndentation(indentation))
     }
@@ -112,7 +116,14 @@ object SettingsBackupSettingsHandlerGenerator {
         setting: SettingsRegistry.SettingMetadata,
         indentation: Int,
     ) {
-        appendLine("${setting.name} = ${getConfigAccess(setting)},".addIndentation(indentation))
+        val value = getConfigAccess(setting)
+        val backupValue =
+            if (setting.group == SettingGroup.ARCHIVAL.value && value != "null") {
+                "if (userId == ARCHIVE_OWNER_ID) $value else null"
+            } else {
+                value
+            }
+        appendLine("${setting.name} = $backupValue,".addIndentation(indentation))
     }
 
     private fun getSettingType(

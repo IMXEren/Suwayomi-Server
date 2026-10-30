@@ -5,6 +5,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import suwayomi.tachidesk.graphql.types.Settings
 import suwayomi.tachidesk.server.ServerConfig
 import suwayomi.tachidesk.server.serverConfig
+import suwayomi.tachidesk.server.user.ARCHIVE_OWNER_ID
 import kotlin.reflect.KProperty1
 import kotlin.reflect.full.memberProperties
 
@@ -50,13 +51,28 @@ object SettingsUpdater {
         }
     }
 
-    fun updateAll(settings: Settings) {
-        settings
-            .asMap()
-            .forEach { (name, value) ->
-                if (value != null) {
-                    updateSetting(name, value)
-                }
+    fun requireArchiveOwner(
+        userId: Int,
+        settings: Settings,
+    ) {
+        if (userId == ARCHIVE_OWNER_ID) return
+        require(settings.asMap().none { (name, value) -> value != null && isArchiveSetting(name) }) {
+            "Only the built-in admin can change shared archive settings"
+        }
+    }
+
+    private fun isArchiveSetting(name: String): Boolean = SettingsRegistry.get(name)?.group == SettingGroup.ARCHIVAL.value
+
+    fun updateAll(
+        settings: Settings,
+        userId: Int,
+        skipArchival: Boolean = false,
+    ) {
+        if (!skipArchival) requireArchiveOwner(userId, settings)
+        settings.asMap().forEach { (name, value) ->
+            if (value != null && (!skipArchival || !isArchiveSetting(name))) {
+                updateSetting(name, value)
             }
+        }
     }
 }

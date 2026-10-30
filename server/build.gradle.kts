@@ -41,6 +41,11 @@ dependencies {
     implementation(libs.bundles.okhttp)
     implementation(libs.okio)
 
+    // Prowl-backed extension WebView: CDP client and its Ktor WebSocket transport.
+    implementation(libs.chrome.devtools.kotlin)
+    implementation(libs.ktor.client.cio)
+    implementation(libs.ktor.client.websockets)
+
     // Javalin api
     implementation(libs.bundles.javalin)
     implementation(libs.bundles.jackson)
@@ -89,6 +94,8 @@ dependencies {
 
     // AndroidCompat
     implementation(projects.androidCompat)
+    compileOnly(libs.android.stubs)
+    testImplementation(libs.android.stubs)
     implementation(projects.androidCompat.config)
 
     // i18n
@@ -107,6 +114,7 @@ dependencies {
 
     implementation(libs.cronUtils)
 
+    implementation(libs.bcrypt)
     implementation(libs.jwt)
 
     compileOnly(libs.kte)
@@ -157,7 +165,7 @@ buildConfig {
 
     buildConfigField("String", "WEBUI_TAG", quoteWrap(webUIRevisionTag))
 
-    buildConfigField("String", "GITHUB", quoteWrap("https://github.com/Suwayomi/Suwayomi-Server"))
+    buildConfigField("String", "GITHUB", quoteWrap("https://github.com/IMXEren/Suwayomi-Server"))
     buildConfigField("String", "DISCORD", quoteWrap("https://discord.gg/DDZdqZWaHA"))
     buildConfigField("String", "JCEF_VERSION", quoteWrap(libs.versions.jcef.get()))
     buildConfigField("String", "JCEF_JBR_RELEASE", quoteWrap(webviewJbrRelease))
@@ -205,6 +213,24 @@ tasks {
         testLogging {
             showStandardStreams = true
             events("passed", "skipped", "failed")
+        }
+        // Set before any test runs, a test may load the config before ApplicationTest sets it
+        systemProperty(
+            "suwayomi.tachidesk.config.server.rootDir",
+            layout.buildDirectory
+                .dir("tmp/TestDesk")
+                .get()
+                .asFile.absolutePath,
+        )
+        listOf(
+            "testDatabaseType" to "databaseType",
+            "testDatabaseUrl" to "databaseUrl",
+            "testDatabaseUsername" to "databaseUsername",
+            "testDatabasePassword" to "databasePassword",
+        ).forEach { (gradleProp, configProp) ->
+            project.findProperty(gradleProp)?.let {
+                systemProperty("suwayomi.tachidesk.config.server.$configProp", it)
+            }
         }
     }
 
@@ -260,8 +286,12 @@ tasks {
         }
     }
 
-    runKtlintCheckOverMainSourceSet {
-        mustRunAfter(generateJte)
+    // The main source set contains generated settings and JTE sources; both ktlint tasks
+    // must schedule the generators rather than merely running after them.
+    listOf(runKtlintCheckOverMainSourceSet, runKtlintFormatOverMainSourceSet).forEach { ktlintTask ->
+        ktlintTask {
+            dependsOn(generateJte, ":server:server-config-generate:generateSettings")
+        }
     }
 
     compileKotlin {

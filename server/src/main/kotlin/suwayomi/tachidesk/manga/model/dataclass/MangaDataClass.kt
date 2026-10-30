@@ -10,11 +10,23 @@ package suwayomi.tachidesk.manga.model.dataclass
 import com.fasterxml.jackson.annotation.JsonIgnore
 import eu.kanade.tachiyomi.source.model.UpdateStrategy
 import kotlinx.serialization.json.JsonObject
-import suwayomi.tachidesk.manga.impl.Manga.getMangaMetaMap
 import suwayomi.tachidesk.manga.impl.util.lang.EMPTY
 import suwayomi.tachidesk.manga.impl.util.lang.trimAll
 import suwayomi.tachidesk.manga.model.table.MangaStatus
 import java.time.Instant
+
+/**
+ * Per-series archival acquisition policy.
+ *
+ * [AUTO] acquires and archives chapters without manual approval.
+ * [MANUAL] keeps discovering chapters but requires explicit approval before anything is acquired.
+ * [PAUSED] performs no automatic update checking or acquisition for the series.
+ */
+enum class MangaAcquisitionPolicy {
+    AUTO,
+    MANUAL,
+    PAUSED,
+}
 
 data class MangaDataClass(
     val id: Int,
@@ -29,13 +41,21 @@ data class MangaDataClass(
     val description: String? = null,
     val genre: List<String> = emptyList(),
     val status: String = MangaStatus.UNKNOWN.name,
+    @Deprecated("Grab data elsewhere")
     val inLibrary: Boolean = false,
+    @Deprecated("Grab data elsewhere")
     val inLibraryAt: Long = 0,
     val source: SourceDataClass? = null,
     val realUrl: String? = null,
     val lastFetchedAt: Long? = 0,
     val chaptersLastFetchedAt: Long? = 0,
     val updateStrategy: UpdateStrategy = UpdateStrategy.ALWAYS_UPDATE,
+    /** the policy actually applied: the per-series override when set, the global default otherwise */
+    val acquisitionPolicy: MangaAcquisitionPolicy = MangaAcquisitionPolicy.MANUAL,
+    /** the per-series override; null inherits the configurable global default */
+    val acquisitionPolicyOverride: MangaAcquisitionPolicy? = null,
+    /** null inherits the global default, -1 is unlimited and >= 0 is an explicit count */
+    val acceptedRevisionRetention: Int? = null,
     val freshData: Boolean = false,
     val unreadCount: Long? = null,
     val downloadCount: Long? = null,
@@ -51,11 +71,6 @@ data class MangaDataClass(
     val memo: JsonObject = JsonObject.EMPTY,
 ) {
     override fun toString(): String = "\"$title\" (id= $id) (sourceId= $sourceId)"
-
-    @Deprecated("Remove with V1 Api")
-    val meta: Map<String, String> by lazy {
-        getMangaMetaMap(id)
-    }
 }
 
 data class PagedMangaListDataClass(

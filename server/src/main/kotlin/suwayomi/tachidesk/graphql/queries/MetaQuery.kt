@@ -8,11 +8,13 @@
 package suwayomi.tachidesk.graphql.queries
 
 import com.expediagroup.graphql.generator.annotations.GraphQLDeprecated
+import com.expediagroup.graphql.generator.annotations.GraphQLIgnore
 import com.expediagroup.graphql.server.extensions.getValueFromDataLoader
 import graphql.schema.DataFetchingEnvironment
 import org.jetbrains.exposed.v1.core.Column
 import org.jetbrains.exposed.v1.core.Op
 import org.jetbrains.exposed.v1.core.SortOrder
+import org.jetbrains.exposed.v1.core.eq
 import org.jetbrains.exposed.v1.core.greater
 import org.jetbrains.exposed.v1.core.less
 import org.jetbrains.exposed.v1.jdbc.selectAll
@@ -29,6 +31,7 @@ import suwayomi.tachidesk.graphql.server.primitives.Cursor
 import suwayomi.tachidesk.graphql.server.primitives.Order
 import suwayomi.tachidesk.graphql.server.primitives.OrderBy
 import suwayomi.tachidesk.graphql.server.primitives.PageInfo
+import suwayomi.tachidesk.graphql.server.primitives.PaginationNeeds
 import suwayomi.tachidesk.graphql.server.primitives.QueryResults
 import suwayomi.tachidesk.graphql.server.primitives.applyBeforeAfter
 import suwayomi.tachidesk.graphql.server.primitives.applySortAndGetPaginationInfo
@@ -82,11 +85,11 @@ class MetaQuery {
     data class MetaCondition(
         val key: String? = null,
         val value: String? = null,
-    ) : HasGetOp {
-        override fun getOp(): Op<Boolean>? {
+    ) : HasGetOp<Any?> {
+        override fun getOp(value: Any?): Op<Boolean>? {
             val opAnd = OpAnd()
             opAnd.eq(key, GlobalMetaTable.key)
-            opAnd.eq(value, GlobalMetaTable.value)
+            opAnd.eq(this.value, GlobalMetaTable.value)
 
             return opAnd.op
         }
@@ -98,16 +101,19 @@ class MetaQuery {
         override val and: List<MetaFilter>? = null,
         override val or: List<MetaFilter>? = null,
         override val not: MetaFilter? = null,
-    ) : Filter<MetaFilter> {
-        override fun getOpList(): List<Op<Boolean>> =
+    ) : Filter<MetaFilter, Any?> {
+        override fun getOpList(value: Any?): List<Op<Boolean>> =
             listOfNotNull(
                 andFilterWithCompareString(GlobalMetaTable.key, key),
-                andFilterWithCompareString(GlobalMetaTable.value, value),
+                andFilterWithCompareString(GlobalMetaTable.value, this.value),
             )
     }
 
     @RequireAuth
     fun metas(
+        @GraphQLIgnore
+        userId: Int,
+        dataFetchingEnvironment: DataFetchingEnvironment,
         condition: MetaCondition? = null,
         filter: MetaFilter? = null,
         @GraphQLDeprecated(
@@ -129,9 +135,9 @@ class MetaQuery {
     ): GlobalMetaNodeList {
         val queryResults =
             transaction {
-                val res = GlobalMetaTable.selectAll()
+                val res = GlobalMetaTable.selectAll().where { GlobalMetaTable.user eq userId }
 
-                res.applyOps(condition, filter)
+                res.applyOps(null, condition, filter)
 
                 val baseSort = listOf(MetaOrder(MetaOrderBy.KEY, SortOrder.ASC))
                 val deprecatedSort = listOfNotNull(orderBy?.let { MetaOrder(orderBy, orderByType) })
@@ -142,6 +148,7 @@ class MetaQuery {
                         actualSort,
                         before,
                         last,
+                        PaginationNeeds.of(dataFetchingEnvironment),
                     ) { it?.get(GlobalMetaTable.key) }
 
                 res.applyBeforeAfter(

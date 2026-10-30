@@ -1,8 +1,8 @@
 package suwayomi.tachidesk.server.settings
 
-import com.typesafe.config.ConfigValue as TypeSafeConfigValue
 import com.typesafe.config.parser.ConfigDocument
 import kotlin.reflect.KClass
+import com.typesafe.config.ConfigValue as TypeSafeConfigValue
 
 /**
  * Registry to track all settings for automatic updating and validation
@@ -86,7 +86,13 @@ object SettingsRegistry {
         val requiresRestart: Boolean,
         val description: String? = null,
         val excludeFromBackup: Boolean? = null,
-        val privacySafe: Boolean
+        val privacySafe: Boolean,
+        /**
+         * A secret is a write-only setting: it may be set through an authenticated mutation, but its
+         * value is never read back into any GraphQL-serializable settings object. Defaults to false
+         * so no existing setting changes behavior silently.
+         */
+        val secret: Boolean = false,
     )
 
     private val settings = mutableMapOf<String, SettingMetadata>()

@@ -36,7 +36,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
-import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -613,7 +612,13 @@ object WebInterfaceManager {
                             .awaitSuccess()
                             .body
                             .string()
-                    Json.decodeFromString<JsonObject>(releaseInfoJson)["tag_name"]?.jsonPrimitive?.content
+
+                    // The release info URL may point at a single release or at a release list
+                    // (this fork reads the list so prereleases count), so accept both shapes.
+                    val payload = json.parseToJsonElement(releaseInfoJson)
+                    val release = if (payload is JsonArray) payload.firstOrNull()?.jsonObject else payload.jsonObject
+
+                    release?.get("tag_name")?.jsonPrimitive?.content
                         ?: throw Exception("Failed to get the preview version tag")
                 },
             )

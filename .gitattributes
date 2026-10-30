@@ -1,5 +1,4 @@
-* text=auto
-* text eol=lf
+* text=auto eol=lf
 
 # Windows forced line-endings
 /.idea/* text eol=crlf

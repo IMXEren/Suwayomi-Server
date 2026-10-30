@@ -39,6 +39,8 @@ open class SettingDelegate<T : Any>(
     protected val description: String? = null,
     protected val excludeFromBackup: Boolean? = null,
     val privacySafe: Boolean,
+    /** true when the value must never be read back into a GraphQL-serializable settings object */
+    val secret: Boolean = false,
 ) {
     var flow: MutableStateFlow<T>? = null
     lateinit var propertyName: String
@@ -65,6 +67,7 @@ open class SettingDelegate<T : Any>(
                         convertToGqlType = typeInfo?.convertToGqlType,
                         convertToInternalType = typeInfo?.convertToInternalType,
                         convertToBackupType = typeInfo?.convertToBackupType,
+                        restoreLegacy = typeInfo?.restoreLegacy,
                     ),
                 defaultValue = defaultValue,
                 validator =
@@ -94,6 +97,7 @@ open class SettingDelegate<T : Any>(
                     },
                 excludeFromBackup = excludeFromBackup,
                 privacySafe = privacySafe,
+                secret = secret,
             ),
         )
 
@@ -176,8 +180,12 @@ class MigratedConfigValue<T : Any>(
                     SettingsRegistry.TypeInfo(
                         type = typeInfo?.type ?: defaultValue::class,
                         specificType = typeInfo?.specificType,
+                        interfaceType = typeInfo?.interfaceType,
                         backupType = typeInfo?.backupType,
                         imports = typeInfo?.imports,
+                        convertToGqlType = typeInfo?.convertToGqlType,
+                        convertToInternalType = typeInfo?.convertToInternalType,
+                        convertToBackupType = typeInfo?.convertToBackupType,
                         restoreLegacy = typeInfo?.restoreLegacy,
                     ),
                 defaultValue = defaultValue,
@@ -221,6 +229,7 @@ class StringSetting(
     protoNumber: Int,
     defaultValue: String,
     pattern: Regex? = null,
+    minLength: Int? = null,
     maxLength: Int? = null,
     group: SettingGroup,
     deprecated: SettingsRegistry.SettingDeprecated? = null,
@@ -228,6 +237,7 @@ class StringSetting(
     description: String? = null,
     excludeFromBackup: Boolean? = null,
     privacySafe: Boolean,
+    secret: Boolean = false,
 ) : SettingDelegate<String>(
         protoNumber = protoNumber,
         defaultValue = defaultValue,
@@ -235,6 +245,8 @@ class StringSetting(
             when {
                 pattern != null && !value.matches(pattern) ->
                     "Value (${maybeRedact(value, privacySafe)}) must match pattern: ${pattern.pattern}"
+                minLength != null && value.length < minLength ->
+                    "Value (${maybeRedact(value, privacySafe)}) must have at least $minLength characters"
                 maxLength != null && value.length > maxLength ->
                     "Value (${maybeRedact(value, privacySafe)}) must not exceed $maxLength characters"
                 else -> null
@@ -253,6 +265,7 @@ class StringSetting(
         description = description,
         excludeFromBackup = excludeFromBackup,
         privacySafe = privacySafe,
+        secret = secret,
     )
 
 abstract class RangeSetting<T : Comparable<T>>(

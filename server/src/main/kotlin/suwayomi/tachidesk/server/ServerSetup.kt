@@ -8,6 +8,7 @@ package suwayomi.tachidesk.server
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import android.os.Looper
+import android.webkit.WebView
 import ch.qos.logback.classic.Level
 import com.typesafe.config.ConfigRenderOptions
 import dorkbox.updates.Updates
@@ -29,16 +30,39 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.bouncycastle.jce.provider.BouncyCastleProvider
 import org.cef.network.CefCookieManager
+import org.jetbrains.exposed.v1.core.and
+import org.jetbrains.exposed.v1.core.eq
+import org.jetbrains.exposed.v1.core.lowerCase
+import org.jetbrains.exposed.v1.core.neq
+import org.jetbrains.exposed.v1.jdbc.select
+import org.jetbrains.exposed.v1.jdbc.transactions.transaction
+import org.jetbrains.exposed.v1.jdbc.update
 import org.koin.core.context.startKoin
 import org.koin.core.module.Module
 import org.koin.dsl.module
+import suwayomi.tachidesk.global.impl.CdpWebViewProvider
 import suwayomi.tachidesk.global.impl.KcefWebView.Companion.toCefCookie
 import suwayomi.tachidesk.global.impl.sync.SyncManager
+import suwayomi.tachidesk.global.impl.util.Bcrypt
+import suwayomi.tachidesk.global.model.table.UserAccountTable
 import suwayomi.tachidesk.graphql.types.DatabaseType
+import suwayomi.tachidesk.graphql.types.WebViewProvider
 import suwayomi.tachidesk.i18n.LocalizationHelper
+import suwayomi.tachidesk.manga.impl.ArchiveBootstrapExecutor
+import suwayomi.tachidesk.manga.impl.ChapterRevisionAcquisitionExecutor
+import suwayomi.tachidesk.manga.impl.ChapterRevisionArchiveExecutor
+import suwayomi.tachidesk.manga.impl.ChapterRevisionArchiveVerificationExecutor
+import suwayomi.tachidesk.manga.impl.ChapterRevisionIntegrityAuditExecutor
+import suwayomi.tachidesk.manga.impl.ChapterRevisionPublicationExecutor
+import suwayomi.tachidesk.manga.impl.ChapterRevisionRetentionExecutor
+import suwayomi.tachidesk.manga.impl.ChapterRevisionSweepExecutor
+import suwayomi.tachidesk.manga.impl.ChapterRevisionVisualAnalysisExecutor
+import suwayomi.tachidesk.manga.impl.KomgaRescanExecutor
+import suwayomi.tachidesk.manga.impl.backup.proto.BackupRestoreExecutor
 import suwayomi.tachidesk.manga.impl.backup.proto.ProtoBackupExport
 import suwayomi.tachidesk.manga.impl.download.DownloadManager
 import suwayomi.tachidesk.manga.impl.extension.Extension
+import suwayomi.tachidesk.manga.impl.extension.ExtensionAutoUpdater
 import suwayomi.tachidesk.manga.impl.extension.ExtensionStoreService
 import suwayomi.tachidesk.manga.impl.update.IUpdater
 import suwayomi.tachidesk.manga.impl.update.Updater
@@ -70,6 +94,7 @@ import java.net.Authenticator
 import java.net.PasswordAuthentication
 import java.security.Security
 import java.util.Locale
+import kotlin.random.Random
 
 private val logger = KotlinLogging.logger {}
 
@@ -86,6 +111,14 @@ class ApplicationDirs(
     val webUIServe = "$tempRoot/webUI-serve"
     val automatedBackupRoot
         get() = serverConfig.backupPath.value.ifBlank { "$dataRoot/backups" }
+
+    /** Local staging root for chapter revision candidate downloads; never part of the archive. */
+    val archiveStagingRoot
+        get() = serverConfig.archiveStagingPath.value.ifBlank { "$dataRoot/staging" }
+
+    /** Root of the immutable archived chapter revision artifacts; may be an object-storage mount. */
+    val archiveRoot
+        get() = serverConfig.archivePath.value.ifBlank { "$dataRoot/archive" }
 
     val tempThumbnailCacheRoot = "$tempRoot/thumbnails"
     val tempMangaCacheRoot = "$tempRoot/manga-cache"
@@ -121,7 +154,14 @@ data class DatabaseSettings(
     val databaseUrl: String,
     val databaseUsername: String,
     val databasePassword: String,
+    val databaseSchema: String,
     val useHikariConnectionPool: Boolean,
+    val hikariMaxPoolSize: Int,
+)
+
+data class AuthSettings(
+    val authUsername: String,
+    val authPassword: String,
 )
 
 val androidCompat by lazy { AndroidCompat() }
@@ -130,12 +170,13 @@ fun setupLogLevelUpdating(
     configFlow: MutableStateFlow<Boolean>,
     loggerNames: List<String>,
     defaultLevel: Level = Level.INFO,
+    debugLevel: Level = Level.DEBUG,
 ) {
     serverConfig.subscribeTo(
         configFlow,
         { debugLogsEnabled ->
             loggerNames.forEach { loggerName ->
-                setLogLevelFor(loggerName, if (debugLogsEnabled) Level.DEBUG else defaultLevel)
+                setLogLevelFor(loggerName, if (debugLogsEnabled) debugLevel else defaultLevel)
             }
         },
         ignoreInitialValue = false,
@@ -191,6 +232,9 @@ fun applicationSetup() {
     )
 
     setupLogLevelUpdating(serverConfig.debugLogsEnabled, listOf(BASE_LOGGER_NAME))
+    setupLogLevelUpdating(serverConfig.debugLogsEnabled, listOf("Exposed"), defaultLevel = Level.OFF, debugLevel = Level.WARN)
+    setLogLevelFor("org.eclipse.jetty", Level.OFF)
+    setLogLevelFor("com.zaxxer.hikari", Level.WARN)
 
     logger.info { "Running Suwayomi-Server ${BuildConfig.VERSION}" }
 
@@ -222,6 +266,8 @@ fun applicationSetup() {
         applicationDirs.tempThumbnailCacheRoot,
         applicationDirs.downloadsRoot,
         applicationDirs.localMangaRoot,
+        applicationDirs.archiveStagingRoot,
+        applicationDirs.archiveRoot,
     ).forEach { File(it).mkdirs() }
 
     // initialize Koin modules
@@ -267,6 +313,9 @@ fun applicationSetup() {
 
     // Load Android compatibility dependencies
     AndroidCompatInitializer().init()
+    if (serverConfig.webViewProvider.value == WebViewProvider.PROWL_VNC && System.getenv("WEB_VIEW_CDP_TOKEN_FILE") != null) {
+        WebView.setProviderFactory({ view -> CdpWebViewProvider.create(view) }, true)
+    }
     // start app
     androidCompat.startApp(app)
 
@@ -348,19 +397,23 @@ fun applicationSetup() {
             serverConfig.databaseUrl,
             serverConfig.databaseUsername,
             serverConfig.databasePassword,
+            serverConfig.databaseSchema,
             serverConfig.useHikariConnectionPool,
+            serverConfig.hikariMaxPoolSize,
         ) { vargs ->
             DatabaseSettings(
-                vargs[0] as DatabaseType,
-                vargs[1] as String,
-                vargs[2] as String,
-                vargs[3] as String,
-                vargs[4] as Boolean,
+                databaseType = vargs[0] as DatabaseType,
+                databaseUrl = vargs[1] as String,
+                databaseUsername = vargs[2] as String,
+                databasePassword = vargs[3] as String,
+                databaseSchema = vargs[4] as String,
+                useHikariConnectionPool = vargs[5] as Boolean,
+                hikariMaxPoolSize = vargs[6] as Int,
             )
         }.distinctUntilChanged(),
-        { (databaseType, databaseUrl, _databaseUsername, _databasePassword, hikariCp) ->
+        { (databaseType, databaseUrl, _databaseUsername, _databasePassword, databaseSchema, hikariCp, hikariMaxPoolSize) ->
             logger.info {
-                "Database changed - type=$databaseType url=$databaseUrl, username=[REDACTED], password=[REDACTED], hikaricp=$hikariCp"
+                "Database changed - type=$databaseType url=$databaseUrl, username=[REDACTED], password=[REDACTED], schema=$databaseSchema, hikaricp=$hikariCp, hikariMaxPoolSize=$hikariMaxPoolSize"
             }
             databaseUp()
 
@@ -387,9 +440,6 @@ fun applicationSetup() {
         },
         ignoreInitialValue = false,
     )
-
-    setLogLevelFor("org.eclipse.jetty", Level.OFF)
-    setLogLevelFor("com.zaxxer.hikari", Level.WARN)
 
     // socks proxy settings
     serverConfig.subscribeTo(
@@ -457,6 +507,46 @@ fun applicationSetup() {
     // start DownloadManager and restore + resume downloads
     DownloadManager.restoreAndResumeDownloads()
 
+    // start the chapter revision acquisition executor; it recovers interrupted revisions itself
+    ChapterRevisionAcquisitionExecutor.start()
+
+    // start the archive commit worker; it never confirms remote durability on its own
+    ChapterRevisionArchiveExecutor.start()
+
+    // start the remote durability verifier; it is inert until an rclone remote is configured
+    ChapterRevisionArchiveVerificationExecutor.start()
+
+    // start the active-library publication worker; it only ever publishes confirmed, active revisions.
+    // The built-in Komga listener is registered by its executor before this start, so a delivered
+    // publication can never be missing its rescan intent.
+    ChapterRevisionPublicationExecutor.start()
+
+    // start the coalesced Komga rescan worker; it is inert until Komga is configured
+    KomgaRescanExecutor.start()
+
+    // start the retention worker; it prunes historical payloads only after their replacement is published
+    ChapterRevisionRetentionExecutor.start()
+
+    // start the archive bootstrap worker; it also recovers series claimed by a shutdown. It is inert
+    // until a bootstrap session exists, and a new session wakes it directly.
+    ArchiveBootstrapExecutor.start()
+
+    // start the durable backup restore worker; it recovers a restore a shutdown interrupted and
+    // resumes it from the series it had already applied
+    BackupRestoreExecutor.start()
+
+    // start the periodic revision sweep worker; it also owns the persisted sweep schedule, so a
+    // restart resumes the schedule instead of inventing a sweep that never came due
+    ChapterRevisionSweepExecutor.start()
+
+    // start the visual page comparison worker; it recovers an analysis a shutdown interrupted and
+    // owns the retry schedule of one that could not be produced
+    ChapterRevisionVisualAnalysisExecutor.start()
+
+    // start the archive integrity audit worker; it is inert until an rclone remote is configured, and
+    // it never claims anything while none is: without a remote no revision can be checked at all
+    ChapterRevisionIntegrityAuditExecutor.start()
+
     SyncManager.scheduleSyncTask()
 
     // asynchronously initialize CEF
@@ -468,6 +558,112 @@ fun applicationSetup() {
         serverConfig.extensionStores,
         { _ ->
             ExtensionStoreService.syncPrefsToDb()
+        },
+        ignoreInitialValue = false,
+    )
+
+    ExtensionAutoUpdater.start()
+
+    serverConfig.subscribeTo(
+        serverConfig.acceptedRevisionRetention,
+        { _ ->
+            // the global default changes the window of every series that does not override it
+            ChapterRevisionRetentionExecutor.requestSweep()
+        },
+    )
+
+    serverConfig.subscribeTo(
+        combine(
+            serverConfig.chapterRevisionSweepEnabled,
+            serverConfig.chapterRevisionSweepIntervalDays,
+            serverConfig.chapterRevisionSweepNewestChapters,
+        ) { _, _, _ -> Unit },
+        { _ ->
+            // enabling the scheduler or shortening the interval has to take effect without a restart,
+            // and the worker has to be woken so the change is observable before the next due time
+            ChapterRevisionSweepExecutor.configurationChanged()
+        },
+    )
+
+    serverConfig.subscribeTo(
+        serverConfig.archiveRcloneRemote,
+        { _ ->
+            // configuring a remote has to revive the work that was inert while it was blank: the
+            // unscheduled deletions become due and both verifiers are woken without a restart
+            ChapterRevisionRetentionExecutor.configurationChanged()
+            ChapterRevisionArchiveVerificationExecutor.configurationChanged()
+            ChapterRevisionIntegrityAuditExecutor.notifyWorkAvailable()
+        },
+    )
+
+    serverConfig.subscribeTo(
+        combine(
+            serverConfig.chapterIntegrityAuditEnabled,
+            serverConfig.chapterIntegrityAuditIntervalDays,
+            serverConfig.chapterIntegrityAuditRecentRevisions,
+        ) { _, _, _ -> Unit },
+        { _ ->
+            // enabling the scheduler or shortening the interval has to take effect without a restart,
+            // and the worker has to be woken so the change is observable before the next due time
+            ChapterRevisionIntegrityAuditExecutor.configurationChanged()
+        },
+    )
+
+    serverConfig.subscribeTo(
+        combine(
+            serverConfig.komgaBaseUrl,
+            serverConfig.komgaApiKey,
+            serverConfig.komgaLibraryId,
+        ) { _, _, _ -> Unit },
+        { _ ->
+            // a usable Komga configuration is what makes scans possible: the recorded intent becomes
+            // due and the publication events that were undeliverable are retried without a restart
+            KomgaRescanExecutor.configurationChanged()
+        },
+    )
+
+    serverConfig.subscribeTo(
+        combine<Any, AuthSettings>(
+            serverConfig.authUsername,
+            serverConfig.authPassword,
+        ) { vargs ->
+            AuthSettings(
+                authUsername = vargs[0] as String,
+                authPassword = vargs[1] as String,
+            )
+        },
+        onChange = { settings ->
+            try {
+                transaction {
+                    val usernameSetting = settings.authUsername.trim().ifEmpty { "admin" }
+
+                    val username =
+                        if (
+                            UserAccountTable
+                                .select(UserAccountTable.id)
+                                .where {
+                                    (UserAccountTable.username.lowerCase() eq usernameSetting.lowercase()) and
+                                        (UserAccountTable.id neq 1)
+                                }.empty()
+                        ) {
+                            usernameSetting
+                        } else {
+                            val username = usernameSetting + Random.nextInt(9999)
+                            logger.warn { "Username taken, username now `$username`" }
+                            username
+                        }
+
+                    UserAccountTable.update({ UserAccountTable.id eq 1 }) {
+                        it[UserAccountTable.username] = username
+                        it[UserAccountTable.password] =
+                            Bcrypt.encryptPassword(
+                                settings.authPassword.trim().ifEmpty { "password" },
+                            )
+                    }
+                }
+            } catch (e: Exception) {
+                logger.error(e) { "Unable to update admin username" }
+            }
         },
         ignoreInitialValue = false,
     )

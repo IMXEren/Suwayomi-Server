@@ -14,6 +14,8 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.Cookie
 import okhttp3.Headers
 import okhttp3.HttpUrl
@@ -271,7 +273,13 @@ object CFClearance {
     data class FlareSolverCookie(
         val name: String,
         val value: String,
-    )
+        val domain: String,
+        val path: String,
+        val secure: Boolean,
+        val httpOnly: Boolean,
+    ) {
+        constructor(cookie: Cookie) : this(cookie.name, cookie.value, cookie.domain, cookie.path, cookie.secure, cookie.httpOnly)
+    }
 
     @Serializable
     data class FlareSolverProxy(
@@ -357,7 +365,7 @@ object CFClearance {
                     network.cookieStore
                         .get(originalRequest.url)
                         .filter { it.name !in CloudflareInterceptor.COOKIE_NAMES }
-                        .map { cookie -> FlareSolverCookie(cookie.name, cookie.value) },
+                        .map(::FlareSolverCookie),
                 returnOnlyCookies = onlyCookies,
                 maxTimeout = timeout.inWholeMilliseconds.toInt(),
                 postData =
@@ -383,6 +391,10 @@ object CFClearance {
                         "egress: point server.socksProxyHost/server.socksProxyPort at that egress, or set " +
                         "server.flareSolverrSessionName to a new session.",
                 )
+            }
+            val reply = json.parseToJsonElement(answered).jsonObject
+            if (reply["status"]?.jsonPrimitive?.content != "ok") {
+                throw IOException("Challenge solver returned an error; check its logs")
             }
             json.decodeFromString<FlareSolverResponse>(answered)
         }

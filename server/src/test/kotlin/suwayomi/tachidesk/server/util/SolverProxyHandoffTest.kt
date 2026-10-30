@@ -10,6 +10,8 @@ package suwayomi.tachidesk.server.util
 import com.sun.net.httpserver.HttpServer
 import eu.kanade.tachiyomi.network.interceptor.CFClearance
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.Json
+import okhttp3.Cookie
 import okhttp3.Request
 import org.junit.jupiter.api.Test
 import suwayomi.tachidesk.server.serverConfig
@@ -71,6 +73,37 @@ class SolverProxyHandoffTest : ApplicationTest() {
             assertTrue("\"session\":\"suwayomi\"" in bodies.single(), bodies.single())
             assertTrue("\"session_ttl_minutes\":30" in bodies.single(), bodies.single())
             assertTrue(PROXIED in bodies.single(), bodies.single())
+        }
+
+    @Test
+    fun `a solver cookie retains the scope required by Prowl`() {
+        val cookie =
+            Cookie
+                .Builder()
+                .name("session")
+                .value("test")
+                .domain("example.test")
+                .path("/reader")
+                .secure()
+                .httpOnly()
+                .build()
+        val encoded = Json.encodeToString(CFClearance.FlareSolverCookie(cookie))
+        assertTrue("\"domain\":\"example.test\"" in encoded)
+        assertTrue("\"path\":\"/reader\"" in encoded)
+        assertTrue("\"secure\":true" in encoded)
+        assertTrue("\"httpOnly\":true" in encoded)
+    }
+
+    @Test
+    fun `a solver error is reported without parsing it as a successful solution`() =
+        solveAgainst("""{"status":"error","message":"cookie=test-token"}""") { bodies ->
+            val error =
+                assertFailsWith<IOException> {
+                    CFClearance.resolveWithFlareSolver(Request.Builder().url("https://example.test/").build(), true)
+                }
+            assertEquals(1, bodies.size)
+            assertTrue("Challenge solver returned an error" in error.message.orEmpty())
+            assertTrue("test-token" !in error.message.orEmpty())
         }
 
     @Test

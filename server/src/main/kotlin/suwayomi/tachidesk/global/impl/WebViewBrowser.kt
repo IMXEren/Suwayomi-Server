@@ -14,6 +14,7 @@ import suwayomi.tachidesk.server.util.asDirectClient
 import java.io.IOException
 import java.io.InterruptedIOException
 import java.net.URI
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.toJavaDuration
@@ -31,9 +32,8 @@ data class WebViewTab(
 /**
  * Client for the browser service's interactive commands.
  *
- * A tab stays open on the display the VNC endpoint serves and shares a profile with the service's
- * ordinary fetches, so a clearance or a login earned in the browser applies to the app's own
- * requests. Session state is shared in both directions, as the embedded WebView has always done.
+ * A tab stays open on the display the VNC endpoint serves. Its named egress context keeps its own
+ * profile; ordinary app cookies are seeded and read back explicitly for that same context.
  *
  * Every call is bounded by the web view's own timeout, and a call that outlives it is reported
  * rather than left to hang.
@@ -41,19 +41,21 @@ data class WebViewTab(
 internal open class WebViewBrowser(
     private val client: OkHttpClient = defaultClient(),
     private val cookies: WebViewCookieStore = AppCookieStore(),
+    private val egressForUrl: (String) -> String? = WebViewEgress::forUrl,
+    private val namedEgressConfigured: Boolean = WebViewEgress.isConfigured,
 ) {
     private val logger = KotlinLogging.logger {}
 
-    /** The whole profile the browser last reported, so an unchanged one is not written again. */
-    @Volatile
-    private var lastProfileCookies: Set<BrowserCookie>? = null
+    private val tabEgress = ConcurrentHashMap<String, String>()
+    private val lastProfileCookies = ConcurrentHashMap<String, Set<BrowserCookie>>()
 
     open fun open(
         url: String,
         timeoutMillis: Int = interactiveTimeoutMillis(),
     ): WebViewTab {
         val accepted = validateWebViewUrl(url)
-        val seeded = seedCookies(accepted)
+        val egress = egressForUrl(accepted)
+        val seeded = seedCookies(accepted, egress)
         val body =
             json.encodeToString(
                 BrowserOpenRequest(
@@ -61,6 +63,7 @@ internal open class WebViewBrowser(
                     url = accepted,
                     maxTimeout = timeoutMillis,
                     cookies = seeded.takeIf { it.isNotEmpty() },
+                    proxy = egress?.let(::NamedEgress),
                 ),
             )
         val response = post(body)
@@ -70,7 +73,8 @@ internal open class WebViewBrowser(
         val tab = response.tab ?: throw IOException("The browser service did not report a tab")
         // Carry back what the browser holds for the page it just opened, so a session established
         // there is the one the app's own requests use.
-        harvest(tab.url.ifBlank { accepted })
+        tabEgress[tab.id] = egress.orEmpty()
+        harvest(tab.url.ifBlank { accepted }, egress)
         return WebViewTab(id = tab.id, url = tab.url, title = tab.title, status = tab.status)
     }
 
@@ -84,7 +88,9 @@ internal open class WebViewBrowser(
         val closed = response.closed.orEmpty()
         // The whole profile is read on the way out, matching the embedded browser's flush: a login
         // that navigated across domains sets cookies outside the page the tab ended on.
-        harvest(null)
+        val egresses = (closed + listOfNotNull(named)).mapNotNull { tabEgress.remove(it) }.distinct()
+        egresses.forEach { harvest(null, it.takeIf(String::isNotEmpty)) }
+        if (egresses.isEmpty() && !namedEgressConfigured) harvest(null, null)
         return closed
     }
 
@@ -96,7 +102,12 @@ internal open class WebViewBrowser(
             throw IOException(response.message.ifBlank { "The browser service refused to list its tabs" })
         }
         val tabs = response.tabs.orEmpty()
-        if (named != null && tabs.any { it.id == named }) harvest(null, skipUnchanged = true)
+        if (named != null && tabs.any { it.id == named }) {
+            val egress = tabEgress[named]
+            if (egress != null || !namedEgressConfigured) {
+                harvest(null, egress?.takeIf(String::isNotEmpty), skipUnchanged = true)
+            }
+        }
         return tabs.map { WebViewTab(id = it.id, url = it.url, title = it.title, status = it.status) }
     }
 
@@ -106,10 +117,15 @@ internal open class WebViewBrowser(
      * A store that cannot be read is not a reason to refuse the open: the browser works without a
      * seeded session, it just starts out signed out.
      */
-    private fun seedCookies(url: String): List<BrowserCookie> =
+    private fun seedCookies(
+        url: String,
+        egress: String?,
+    ): List<BrowserCookie> =
         try {
             val origin = url.toHttpUrlOrNull() ?: return emptyList()
-            WebViewCookies.toService(cookies.get(origin))
+            WebViewCookies.toService(cookies.get(origin)).filterNot {
+                egress != null && WebViewEgress.isIpBoundCookie(it.name)
+            }
         } catch (e: Exception) {
             logger.warn(e) { "Reading the app's cookies failed, opening without a seeded session" }
             emptyList()
@@ -118,19 +134,21 @@ internal open class WebViewBrowser(
     /** Read browser cookies into the app store; avoid repeated writes during tab polling. */
     private fun harvest(
         url: String?,
+        egress: String?,
         skipUnchanged: Boolean = false,
     ) {
         try {
-            val reported = requestCookies(url)
+            val reported = requestCookies(url, egress)
+            val identity = egress.orEmpty()
             if (reported.isEmpty()) {
-                if (skipUnchanged) lastProfileCookies = emptySet()
+                if (skipUnchanged) lastProfileCookies[identity] = emptySet()
                 return
             }
             val profile = if (skipUnchanged) reported.toSet() else null
-            if (profile != null && profile == lastProfileCookies) return
+            if (profile != null && profile == lastProfileCookies[identity]) return
             val mapped = WebViewCookies.fromService(reported)
             cookies.addAll(mapped)
-            if (profile != null) lastProfileCookies = profile
+            if (profile != null) lastProfileCookies[identity] = profile
             if (mapped.size < reported.size) {
                 logger.warn { "Stored ${mapped.size} of ${reported.size} cookies the browser reported" }
             }
@@ -139,8 +157,16 @@ internal open class WebViewBrowser(
         }
     }
 
-    private fun requestCookies(url: String?): List<BrowserCookie> {
-        val response = post(json.encodeToString(CookiesListRequest(cmd = COOKIES_LIST_COMMAND, url = url)))
+    private fun requestCookies(
+        url: String?,
+        egress: String?,
+    ): List<BrowserCookie> {
+        val response =
+            post(
+                json.encodeToString(
+                    CookiesListRequest(cmd = COOKIES_LIST_COMMAND, url = url, proxy = egress?.let(::NamedEgress)),
+                ),
+            )
         if (response.status != "ok") {
             throw IOException(response.message.ifBlank { "The browser service refused to report its cookies" })
         }
@@ -264,6 +290,11 @@ internal open class WebViewBrowser(
 }
 
 @Serializable
+private data class NamedEgress(
+    val name: String,
+)
+
+@Serializable
 private data class BrowserOpenRequest(
     // The command name carries no default on purpose: this serializer omits fields that have one,
     // and a request without its command is refused by the service as a malformed one.
@@ -271,6 +302,7 @@ private data class BrowserOpenRequest(
     val url: String,
     val maxTimeout: Int,
     val cookies: List<BrowserCookie>? = null,
+    val proxy: NamedEgress? = null,
 )
 
 @Serializable
@@ -289,6 +321,7 @@ private data class BrowserListRequest(
 private data class CookiesListRequest(
     val cmd: String,
     val url: String? = null,
+    val proxy: NamedEgress? = null,
 )
 
 @Serializable

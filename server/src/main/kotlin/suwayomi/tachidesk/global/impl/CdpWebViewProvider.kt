@@ -179,7 +179,7 @@ internal class CdpWebViewProvider private constructor(
 
                 @Suppress("UNCHECKED_CAST")
                 val callback = args[1] as? ValueCallback<String>
-                browser.submit { page ->
+                browser.submit(initialUrl = currentUrl ?: "about:blank") { page ->
                     val result =
                         try {
                             evaluate(page, script)?.toString() ?: "null"
@@ -204,7 +204,7 @@ internal class CdpWebViewProvider private constructor(
             "insertVisualStateCallback" -> {
                 val id = args[0] as Long
                 val callback = args[1] as WebView.VisualStateCallback
-                browser.submit { page ->
+                browser.submit(initialUrl = currentUrl ?: "about:blank") { page ->
                     val deadline = System.currentTimeMillis() + 1_000
                     while (System.currentTimeMillis() < deadline) {
                         if (evaluate(page, "document.readyState")?.toString() == "\"complete\"") break
@@ -215,7 +215,7 @@ internal class CdpWebViewProvider private constructor(
             }
 
             "reload" -> {
-                browser.submit { page ->
+                browser.submit(initialUrl = currentUrl ?: "about:blank") { page ->
                     flushBridge(page)
                     page.page.reload(ReloadRequest())
                 }
@@ -380,7 +380,7 @@ internal class CdpWebViewProvider private constructor(
         headers: Map<String, String>,
     ) {
         currentUrl = url
-        browser.submit { page ->
+        browser.submit(initialUrl = url) { page ->
             flushBridge(page)
             routeIfNeeded(page)
             seed(page, url)
@@ -401,7 +401,7 @@ internal class CdpWebViewProvider private constructor(
         data: String,
         mimeType: String?,
     ) {
-        browser.submit { page ->
+        browser.submit(initialUrl = baseUrl ?: "about:blank") { page ->
             flushBridge(page)
             routeIfNeeded(page)
             if (baseUrl == null || !baseUrl.startsWith("http")) {
@@ -649,7 +649,10 @@ internal class CdpWebViewProvider private constructor(
     ) {
         try {
             val origin = url.toHttpUrlOrNull() ?: return
-            val cookies = cookieStore.get(origin)
+            val cookies =
+                cookieStore.get(origin).filterNot {
+                    browser.egress != null && WebViewEgress.isIpBoundCookie(it.name)
+                }
             if (cookies.isEmpty()) return
             page.network.setCookies(
                 cookies.map { cookie ->

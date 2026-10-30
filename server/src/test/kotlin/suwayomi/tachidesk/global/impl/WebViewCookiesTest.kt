@@ -128,6 +128,61 @@ class WebViewCookieBridgeTest : ApplicationTest() {
     }
 
     @Test
+    fun `named context receives ordinary app cookies but not clearance from a different exit`() {
+        val store =
+            RecordingCookieStore(
+                listOf(
+                    appCookie("session", "from-app", "example.com"),
+                    appCookie("cf_clearance", "old-exit", "example.com"),
+                ),
+            )
+        val service =
+            StubService { command ->
+                when (command) {
+                    "cookies.list" -> """{"status":"ok","cookies":[$SESSION_COOKIE]}"""
+                    "browser.list" -> TAB_REPLY
+                    else -> OPEN_REPLY
+                }
+            }
+        val browser = WebViewBrowser(service.client, store, egressForUrl = { "exit-02" }, namedEgressConfigured = true)
+
+        browser.open("https://example.com/")
+        val opened = service.bodyFor("browser.open")
+        assertTrue(opened.contains("\"proxy\":{\"name\":\"exit-02\"}"), opened)
+        assertTrue(opened.contains("\"name\":\"session\""), opened)
+        assertFalse(opened.contains("cf_clearance"), opened)
+        assertTrue(service.bodyFor("cookies.list").contains("\"proxy\":{\"name\":\"exit-02\"}"))
+
+        service.bodies.clear()
+        browser.list("tab-1")
+        assertTrue(service.bodyFor("cookies.list").contains("\"proxy\":{\"name\":\"exit-02\"}"))
+        service.bodies.clear()
+        browser.close("tab-1")
+        assertTrue(service.bodyFor("cookies.list").contains("\"proxy\":{\"name\":\"exit-02\"}"))
+    }
+
+    @Test
+    fun `an unknown named-context tab cannot import cookies from a different profile`() {
+        val store = RecordingCookieStore()
+        val service =
+            StubService { command ->
+                when (command) {
+                    "cookies.list" -> """{"status":"ok","cookies":[$SESSION_COOKIE]}"""
+                    "browser.list" -> TAB_REPLY
+                    "browser.close" -> """{"status":"ok","closed":["tab-1"]}"""
+                    else -> OPEN_REPLY
+                }
+            }
+        val browser = WebViewBrowser(service.client, store, namedEgressConfigured = true)
+
+        browser.list("tab-1")
+        browser.close("tab-1")
+
+        assertTrue(store.written.isEmpty())
+        assertTrue(service.bodies.none { it.contains("\"cmd\":\"cookies.list\"") })
+    }
+
+    @Test
     fun `the browser's cookies are stored once the open succeeds`() {
         val store = RecordingCookieStore()
         val service =

@@ -14,8 +14,10 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.put
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -58,25 +60,33 @@ internal class CdpBrowser(
     private val scope = CoroutineScope(dispatcher.asCoroutineDispatcher() + SupervisorJob())
     private var loop: Job? = null
 
-    fun submit(block: suspend (PageSession) -> Unit) {
+    @Volatile
+    var egress: String? = null
+        private set
+
+    fun submit(
+        initialUrl: String? = null,
+        block: suspend (PageSession) -> Unit,
+    ) {
         check(!closed.get()) { "WebView has been destroyed" }
-        tasks.trySend(block)
-        start()
+        if (initialUrl != null) start(initialUrl)
+        tasks.trySend(block).getOrThrow()
     }
 
     @Synchronized
-    private fun start() {
+    private fun start(url: String) {
         if (loop != null || closed.get()) return
-        loop = scope.launch { run() }
+        egress = WebViewEgress.forUrl(url)
+        loop = scope.launch { run(egress) }
     }
 
-    private suspend fun run() {
+    private suspend fun run(egress: String?) {
         var tab: String? = null
         var browser: BrowserSession? = null
         var page: PageSession? = null
         var stage = "reserve"
         try {
-            val (reservedTab, target) = reserve()
+            val (reservedTab, target) = reserve(egress)
             tab = reservedTab
             if (closed.get()) return
             stage = "connect"
@@ -142,13 +152,14 @@ internal class CdpBrowser(
         target: String,
     ): PageSession = browser.attachToTarget(target).asPageSession()
 
-    private fun reserve(): Pair<String, String> {
+    private fun reserve(egress: String?): Pair<String, String> {
+        val body = buildJsonObject { if (egress != null) put("egress", egress) }.toString()
         val request =
             Request
                 .Builder()
                 .url("$endpoint/cdp/reservations")
                 .header("Authorization", "Bearer $token")
-                .post("{}".toRequestBody("application/json".toMediaType()))
+                .post(body.toRequestBody("application/json".toMediaType()))
                 .build()
         client.newCall(request).execute().use { response ->
             if (!response.isSuccessful) throw IOException("Browser reservation failed with HTTP ${response.code}")
